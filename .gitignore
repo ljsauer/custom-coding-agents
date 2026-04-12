@@ -1,0 +1,6 @@
+# JetBrains
+.idea
+
+# Environment
+.env
+.venv
