@@ -56,10 +56,8 @@ class CollageGenerator:
                 alpha_l = 1.0 - alpha_s
                 for c in range(0, 3):
                     self.background[y1:y2, x1:x2, c] = (
-                            alpha_s *
-                            obj[:, :, c] +
-                            alpha_l *
-                            self.background[y1:y2, x1:x2, c]
+                        alpha_s * obj[:, :, c]
+                        + alpha_l * self.background[y1:y2, x1:x2, c]
                     )
             except ValueError as e:
                 print(e)
@@ -70,8 +68,10 @@ class CollageGenerator:
         return any([rect.collides(other) for other in self.rectangles])
 
     def _cleanup_downloads(self):
-        [os.remove(os.path.join(self.download_path, image))
-         for image in os.listdir(self.download_path)]
+        [
+            os.remove(os.path.join(self.download_path, image))
+            for image in os.listdir(self.download_path)
+        ]
 
     def _find_objects(self) -> None:
         for image in os.listdir(self.download_path):
@@ -102,19 +102,20 @@ class CollageGenerator:
                 if check > self.iter_cap:
                     self.objects.pop(i)
                     break
-            current.x2 = int(current.x1+w)
-            current.y2 = int(current.y1+h)
+            current.x2 = int(current.x1 + w)
+            current.y2 = int(current.y1 + h)
             self.rectangles.append(current)
 
         return
 
     def _wordcloud_background(self, mask: np.array) -> None:
         colormap = choice(Settings.colormaps)
-        wordcloud = WordCloud(width=Settings.image_width,
-                              height=Settings.image_height,
-                              colormap=colormap,
-                              background_color=(randint(0, 255), randint(0, 255), randint(0, 255)),
-                              max_font_size=Settings.max_word_size,
-                              mask=mask
-                              ).generate(str(self.words).replace("'", ""))
+        wordcloud = WordCloud(
+            width=Settings.image_width,
+            height=Settings.image_height,
+            colormap=colormap,
+            background_color=(randint(0, 255), randint(0, 255), randint(0, 255)),
+            max_font_size=Settings.max_word_size,
+            mask=mask,
+        ).generate(str(self.words).replace("'", ""))
         self.background = cv2.cvtColor(np.array(wordcloud), cv2.COLOR_RGB2BGR)

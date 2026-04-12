@@ -21,7 +21,7 @@ class TestImageSearch(unittest.TestCase):
             cv2.imshow("image", image)
             cv2.waitKey(0)
         self.assertTrue(len(images) == Settings.image_per_word)
-        self.assertNotIn('.gif', images)
+        self.assertNotIn(".gif", images)
 
     def tearDown(self) -> None:
         self.img_search.cleanup_downloads()
