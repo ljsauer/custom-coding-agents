@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from anthropic import Anthropic
@@ -31,7 +30,9 @@ class ArchAgent:
         ]
         for f in doc_files:
             if not Path(f).exists():
-                raise FileNotFoundError(f"Documentation file not found: {Path(f).resolve()}")
+                raise FileNotFoundError(
+                    f"Documentation file not found: {Path(f).resolve()}"
+                )
 
         self.chunks, self.embeddings = build_index(doc_files)
 
@@ -61,16 +62,15 @@ class ArchAgent:
                 max_tokens=4096,
                 system=self._build_system(user_input),
                 tools=TOOL_DEFINITIONS,
-                messages=self.session["history"]
+                messages=self.session["history"],
             )
 
             # Serialize before storing — SDK objects are not JSON-safe
             serialized_content = _serialize_content(response.content)
 
-            self.session["history"].append({
-                "role": "assistant",
-                "content": serialized_content
-            })
+            self.session["history"].append(
+                {"role": "assistant", "content": serialized_content}
+            )
 
             if response.stop_reason != "tool_use":
                 for block in serialized_content:
@@ -81,16 +81,15 @@ class ArchAgent:
             for block in serialized_content:
                 if isinstance(block, dict) and block.get("type") == "tool_use":
                     result = execute_tool(block["name"], block["input"])
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block["id"],
-                        "content": result
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block["id"],
+                            "content": result,
+                        }
+                    )
 
-            self.session["history"].append({
-                "role": "user",
-                "content": tool_results
-            })
+            self.session["history"].append({"role": "user", "content": tool_results})
 
     def chat(self, user_input: str) -> str:
         response = self._run_turn(user_input)
@@ -103,6 +102,7 @@ class ArchAgent:
         save_session(self.session)
         print(f"Decision logged: {decision}")
 
+
 def _serialize_content(content) -> list[dict] | str:
     """Convert SDK response content blocks to JSON-serializable dicts."""
     if isinstance(content, str):
@@ -114,18 +114,22 @@ def _serialize_content(content) -> list[dict] | str:
             if block.type == "text":
                 result.append({"type": "text", "text": block.text})
             elif block.type == "tool_use":
-                result.append({
-                    "type": "tool_use",
-                    "id": block.id,
-                    "name": block.name,
-                    "input": block.input
-                })
+                result.append(
+                    {
+                        "type": "tool_use",
+                        "id": block.id,
+                        "name": block.name,
+                        "input": block.input,
+                    }
+                )
             elif block.type == "tool_result":
-                result.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.tool_use_id,
-                    "content": block.content
-                })
+                result.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.tool_use_id,
+                        "content": block.content,
+                    }
+                )
             else:
                 # Fallback for any other block types
                 result.append({"type": block.type, "raw": str(block)})

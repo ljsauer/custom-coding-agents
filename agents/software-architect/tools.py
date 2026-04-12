@@ -45,7 +45,7 @@ TOOL_DEFINITIONS = [
             "required": ["root"],
         },
     },
-{
+    {
         "name": "write_file",
         "description": (
             "Write content to a file. Only available within the configured workspace. "
@@ -53,12 +53,9 @@ TOOL_DEFINITIONS = [
         ),
         "input_schema": {
             "type": "object",
-            "properties": {
-                "path": {"type": "string"},
-                "content": {"type": "string"}
-            },
-            "required": ["path", "content"]
-        }
+            "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+            "required": ["path", "content"],
+        },
     },
     {
         "name": "edit_file",
@@ -71,11 +68,11 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "path": {"type": "string"},
                 "old_str": {"type": "string"},
-                "new_str": {"type": "string"}
+                "new_str": {"type": "string"},
             },
-            "required": ["path", "old_str", "new_str"]
-        }
-    }
+            "required": ["path", "old_str", "new_str"],
+        },
+    },
 ]
 
 
