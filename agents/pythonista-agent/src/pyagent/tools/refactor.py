@@ -1,5 +1,8 @@
 """Code refactoring tool."""
 
+import re
+from pathlib import Path
+
 from anthropic import AsyncAnthropic
 
 from pyagent.config import Settings
@@ -8,8 +11,17 @@ from pyagent.logging import get_logger
 from pyagent.prompts import build_refactor_prompt
 from pyagent.rag import KnowledgeBase
 from pyagent.tools.base import ToolResult
+from pyagent.writer import RefactorPlan
 
 logger = get_logger(__name__)
+
+# Pattern to extract FILE sections from the LLM response.
+_FILE_SECTION_RE = re.compile(
+    r"### FILE:\s*(?P<filename>.+?)\s*\n"
+    r"(?P<explanation>.*?)"
+    r"```python\n(?P<code>.*?)```",
+    re.DOTALL,
+)
 
 
 class RefactorTool:
@@ -55,7 +67,7 @@ class RefactorTool:
             knowledge_base: Knowledge base for retrieving patterns.
 
         Returns:
-            A ``ToolResult`` containing the refactored code and explanation.
+            A ``ToolResult`` containing the raw LLM response.
         """
         rag_context = ""
         if knowledge_base:
@@ -93,3 +105,107 @@ class RefactorTool:
                 "output_tokens": response.usage.output_tokens,
             },
         )
+
+
+def parse_refactor_response(
+    response: str,
+    file_map: dict[str, Path],
+    originals: dict[str, str],
+) -> RefactorPlan:
+    """Parse the LLM's structured refactor response into a ``RefactorPlan``.
+
+    Extracts ``### FILE:`` sections from the response, matches them to real
+    file paths, and builds a plan with diffs.
+
+    Args:
+        response: The raw LLM response text.
+        file_map: Mapping of filename strings (as the LLM sees them) to
+            absolute ``Path`` objects.
+        originals: Mapping of filename strings to their original source code.
+
+    Returns:
+        A ``RefactorPlan`` with parsed file changes.
+    """
+    plan = RefactorPlan()
+
+    # Extract the summary (everything before the first ### FILE: section).
+    first_file = _FILE_SECTION_RE.search(response)
+    if first_file:
+        plan.summary = response[: first_file.start()].strip()
+    else:
+        # No structured sections found — treat the whole response as summary.
+        plan.summary = response
+        logger.warning("No FILE sections found in refactor response")
+        return plan
+
+    for match in _FILE_SECTION_RE.finditer(response):
+        raw_filename = match.group("filename").strip()
+        explanation = match.group("explanation").strip()
+        refactored_code = match.group("code")
+
+        # Try to resolve the filename to a real path.
+        resolved_path = _resolve_filename(raw_filename, file_map)
+        if resolved_path is None:
+            logger.warning(
+                "Could not resolve filename '%s' from LLM response — skipping",
+                raw_filename,
+            )
+            continue
+
+        # Look up the original content.
+        original = originals.get(raw_filename, "")
+        if not original:
+            # Try matching by just the filename part.
+            for key, content in originals.items():
+                if Path(key).name == Path(raw_filename).name:
+                    original = content
+                    break
+
+        # Clean up the refactored code (remove trailing whitespace issues).
+        refactored_code = refactored_code.rstrip() + "\n"
+
+        plan.add_change(
+            path=resolved_path,
+            original=original,
+            refactored=refactored_code,
+            explanation=explanation,
+        )
+
+    logger.info(
+        "Parsed refactor plan: %d files with changes",
+        plan.files_changed,
+    )
+    return plan
+
+
+def _resolve_filename(
+    raw_filename: str,
+    file_map: dict[str, Path],
+) -> Path | None:
+    """Resolve a filename from the LLM response to a real file path.
+
+    Tries exact match first, then progressively looser matching.
+
+    Args:
+        raw_filename: The filename as written by the LLM.
+        file_map: Known filename → path mapping.
+
+    Returns:
+        The resolved ``Path``, or ``None`` if unresolvable.
+    """
+    # Exact match.
+    if raw_filename in file_map:
+        return file_map[raw_filename]
+
+    # Match by basename only.
+    raw_basename = Path(raw_filename).name
+    for key, path in file_map.items():
+        if Path(key).name == raw_basename:
+            return path
+
+    # Match by path suffix (LLM might use relative path).
+    for key, path in file_map.items():
+        if key.endswith(raw_filename) or raw_filename.endswith(key):
+            return path
+
+    return None

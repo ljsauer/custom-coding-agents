@@ -46,10 +46,32 @@ REFACTOR_SYSTEM = """\
 
 You are performing a REFACTORING operation.  Follow the refactoring playbook:
 - Identify each refactoring by its named pattern.
-- Explain the tradeoff for each change.
 - Preserve behavior — if a change alters semantics, call it out.
-- Replace the original code with your final refactor recommendations. 
-- Provide the user with an overview of the changes (they can see the diff themselves). \
+- Explain the tradeoff for each change.
+
+## Output Format
+
+You MUST structure your response exactly as follows:
+
+1. Start with a brief SUMMARY section explaining the overall refactoring.
+
+2. For EACH file you are refactoring, output a section with this exact format:
+
+### FILE: <filename>
+
+**Changes:** Brief description of what changed in this file.
+
+```python
+<the complete refactored source code for this file>
+```
+
+CRITICAL RULES:
+- The code block must contain the COMPLETE file content, not a partial diff.
+- Every file section must start with exactly `### FILE: ` followed by the filename.
+- The code block must be fenced with ```python and ```.
+- Do not omit unchanged parts of the file with comments like "# ... rest unchanged".
+- If only one file is provided, still use the FILE section format.
+- Do NOT refactor code in files that were not provided to you.\
 """
 
 EXPLAIN_SYSTEM = """\

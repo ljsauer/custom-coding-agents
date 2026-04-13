@@ -2,19 +2,17 @@
 
 from pathlib import Path
 
-from pyagent.config import Settings
 from pyagent.context import (
     FileCategory,
+    assemble_context,
+    build_context,
     classify_file,
     discover_python_files,
     parse_module,
     score_modules,
-    assemble_context,
-    build_context,
 )
-from pyagent.memory import ConversationMemory, Role
+from pyagent.memory import ConversationMemory
 from pyagent.rag import load_knowledge_base
-
 
 DOCS_PATH = Path(__file__).resolve().parent.parent / "docs"
 
@@ -58,7 +56,9 @@ class TestContext:
         assert all(f.suffix == ".py" for f in files)
 
     def test_parse_module_extracts_structure(self) -> None:
-        module_path = Path(__file__).resolve().parent.parent / "src" / "pyagent" / "config.py"
+        module_path = (
+            Path(__file__).resolve().parent.parent / "src" / "pyagent" / "config.py"
+        )
         info = parse_module(module_path)
         assert info.path == module_path
         assert any(cls.name == "Settings" for cls in info.classes)
@@ -85,7 +85,9 @@ class TestContext:
         assert classify_file(tmp_path / "tests" / "helpers.py") == FileCategory.TEST
 
     def test_module_info_token_estimate(self) -> None:
-        module_path = Path(__file__).resolve().parent.parent / "src" / "pyagent" / "config.py"
+        module_path = (
+            Path(__file__).resolve().parent.parent / "src" / "pyagent" / "config.py"
+        )
         info = parse_module(module_path)
         assert info.token_estimate > 0
         assert info.line_count > 0
