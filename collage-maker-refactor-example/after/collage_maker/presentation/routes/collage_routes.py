@@ -1,28 +1,19 @@
 """
-Collage Blueprint — Presentation Layer
+Collage Routes — FastAPI Router
 
 Each route does exactly three things:
-  1. Extract input from the HTTP request.
-  2. Call a use case.
-  3. Return an HTTP response (render, redirect, or error).
+  1. Extract and validate input using Pydantic models.
+  2. Call a use case via dependency injection.
+  3. Return a typed response.
 
-There is no business logic here. Validation of business invariants (blank
-names, missing collages) is handled by the domain and surfaces here as
-exceptions that are caught and converted into user-facing flash messages.
+Business logic validation is handled by the domain and surfaces here as
+exceptions that are caught and converted into proper HTTP error responses.
 """
 
 from __future__ import annotations
 
-from flask import (
-    Blueprint,
-    Response,
-    current_app,
-    flash,
-    redirect,
-    render_template,
-    request,
-    url_for,
-)
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form
+from fastapi.responses import HTMLResponse
 
 from collage_maker.application.use_cases.create_collage import CreateCollageUseCase
 from collage_maker.application.use_cases.delete_collage import DeleteCollageUseCase
@@ -33,33 +24,24 @@ from collage_maker.domain.exceptions import (
     CollageNotFoundError,
     InvalidCollageNameError,
 )
+from collage_maker.domain.ports.collage_storage import ICollageStorage
+from collage_maker.presentation.dependencies import (
+    get_create_use_case,
+    get_delete_use_case,
+    get_list_use_case,
+    get_rename_use_case,
+    get_storage,
+    get_thumbnail_size,
+)
+from collage_maker.presentation.models.requests import RenameCollageRequest
+from collage_maker.presentation.models.responses import (
+    CollageListResponse,
+    CollageResponse,
+    MessageResponse,
+    ErrorResponse,
+)
 
-collage_bp = Blueprint("collages", __name__)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _create_uc() -> CreateCollageUseCase:
-    return current_app.config["CREATE_UC"]
-
-
-def _rename_uc() -> RenameCollageUseCase:
-    return current_app.config["RENAME_UC"]
-
-
-def _delete_uc() -> DeleteCollageUseCase:
-    return current_app.config["DELETE_UC"]
-
-
-def _list_uc() -> ListCollagesUseCase:
-    return current_app.config["LIST_UC"]
-
-
-def _thumbnail_size() -> int:
-    return current_app.config["IMG_THUMBNAIL_SIZE"]
+router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
@@ -67,70 +49,152 @@ def _thumbnail_size() -> int:
 # ---------------------------------------------------------------------------
 
 
-@collage_bp.route("/", methods=["GET"])
-def index() -> str:
-    collages = _list_uc().execute()
-    return render_template(
-        "index.html",
-        collages=collages,
-        img_size=_thumbnail_size(),
-        storage_public_path=_public_path_for,
+@router.get("/", response_class=HTMLResponse)
+async def index(
+    list_uc: ListCollagesUseCase = Depends(get_list_use_case),
+    storage: ICollageStorage = Depends(get_storage),
+    img_size: int = Depends(get_thumbnail_size),
+) -> str:
+    """Render the main collage gallery page."""
+    collages = list_uc.execute()
+    
+    # For now, return a basic HTML response
+    # In a full migration, you'd use a template engine like Jinja2
+    html_items = []
+    for collage in collages:
+        image_path = storage.public_path(collage.id)
+        html_items.append(
+            f'<div class="collage-item">'
+            f'<img src="/static/{image_path}" width="{img_size}" height="{img_size * 3//4}">'
+            f'<h3>{collage.name}</h3>'
+            f'<p>Keywords: {", ".join(collage.keyword_texts())}</p>'
+            f'<form method="post" action="/api/collage/{collage.id}/rename">'
+            f'<input type="text" name="name" value="{collage.name}">'
+            f'<button type="submit">Rename</button>'
+            f'</form>'
+            f'<form method="post" action="/api/collage/{collage.id}/delete">'
+            f'<button type="submit">Delete</button>'
+            f'</form>'
+            f'</div>'
+        )
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head><title>Collage Gallery</title></head>
+    <body>
+        <h1>Collage Gallery</h1>
+        <form method="post" action="/api/collage" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".txt">
+            <button type="submit">Create Collage</button>
+        </form>
+        <div class="gallery">
+            {''.join(html_items)}
+        </div>
+    </body>
+    </html>
+    """
+
+
+@router.get("/api/collages", response_model=CollageListResponse)
+async def list_collages(
+    list_uc: ListCollagesUseCase = Depends(get_list_use_case),
+    storage: ICollageStorage = Depends(get_storage),
+) -> CollageListResponse:
+    """Get all collages as JSON."""
+    collages = list_uc.execute()
+    
+    collage_responses = [
+        CollageResponse(
+            id=collage.id,
+            name=collage.name,
+            keywords=collage.keyword_texts(),
+            image_url=f"/static/{storage.public_path(collage.id)}",
+            created_at=collage.created_at,
+            updated_at=collage.updated_at,
+        )
+        for collage in collages
+    ]
+    
+    return CollageListResponse(
+        collages=collage_responses,
+        total=len(collage_responses)
     )
 
 
-@collage_bp.route("/collage", methods=["POST"])
-def create_collage() -> Response:
-    uploaded_file = request.files.get("file")
-    if not uploaded_file:
-        flash("Please upload a text file.", "warning")
-        return redirect(url_for("collages.index"))
-
-    text = uploaded_file.read().decode("utf-8", errors="ignore")
-    if not text.strip():
-        flash("The uploaded file appears to be empty.", "warning")
-        return redirect(url_for("collages.index"))
-
+@router.post("/api/collage", response_model=MessageResponse)
+async def create_collage(
+    file: UploadFile,
+    create_uc: CreateCollageUseCase = Depends(get_create_use_case),
+) -> MessageResponse:
+    """Create a new collage from uploaded text file."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Please upload a text file.")
+    
     try:
-        _create_uc().execute(text)
-        flash("Your collage is being created — check back shortly.", "success")
+        content = await file.read()
+        text = content.decode("utf-8", errors="ignore")
+        
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="The uploaded file appears to be empty.")
+        
+        create_uc.execute(text)
+        return MessageResponse(
+            message="Your collage is being created — check back shortly."
+        )
+        
     except CollageCreationError as exc:
-        flash(str(exc), "danger")
+        raise HTTPException(status_code=400, detail=str(exc))
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Could not decode file as text.")
     except Exception as exc:
-        flash(f"Could not create collage: {exc}", "danger")
-
-    return redirect(url_for("collages.index"))
+        raise HTTPException(status_code=500, detail=f"Could not create collage: {exc}")
 
 
-@collage_bp.route("/collage/<collage_id>/rename", methods=["POST"])
-def rename_collage(collage_id: str) -> Response:
-    new_name = request.form.get("name", "").strip()
+@router.post("/api/collage/{collage_id}/rename", response_model=MessageResponse)
+async def rename_collage_form(
+    collage_id: str,
+    name: str = Form(...),
+    rename_uc: RenameCollageUseCase = Depends(get_rename_use_case),
+) -> MessageResponse:
+    """Rename a collage (form submission)."""
+    return await _rename_collage_impl(collage_id, name, rename_uc)
+
+
+@router.put("/api/collage/{collage_id}/rename", response_model=MessageResponse)
+async def rename_collage_json(
+    collage_id: str,
+    request: RenameCollageRequest,
+    rename_uc: RenameCollageUseCase = Depends(get_rename_use_case),
+) -> MessageResponse:
+    """Rename a collage (JSON API)."""
+    return await _rename_collage_impl(collage_id, request.name, rename_uc)
+
+
+async def _rename_collage_impl(
+    collage_id: str,
+    new_name: str,
+    rename_uc: RenameCollageUseCase,
+) -> MessageResponse:
+    """Shared implementation for rename operations."""
     try:
-        _rename_uc().execute(collage_id, new_name)
-        flash("Collage renamed successfully.", "success")
-    except (CollageNotFoundError, InvalidCollageNameError) as exc:
-        flash(str(exc), "danger")
-
-    return redirect(url_for("collages.index"))
-
-
-@collage_bp.route("/collage/<collage_id>/delete", methods=["POST"])
-def delete_collage(collage_id: str) -> Response:
-    try:
-        _delete_uc().execute(collage_id)
-        flash("Collage deleted.", "success")
+        rename_uc.execute(collage_id, new_name.strip())
+        return MessageResponse(message="Collage renamed successfully.")
     except CollageNotFoundError as exc:
-        flash(str(exc), "danger")
-
-    return redirect(url_for("collages.index"))
-
-
-# ---------------------------------------------------------------------------
-# Template helper — keeps storage path logic out of templates
-# ---------------------------------------------------------------------------
+        raise HTTPException(status_code=404, detail=str(exc))
+    except InvalidCollageNameError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
-def _public_path_for(collage_id: str) -> str:
-    storage = current_app.config.get("STORAGE")
-    if storage:
-        return storage.public_path(collage_id)
-    return f"{collage_id}.jpg"
+@router.post("/api/collage/{collage_id}/delete", response_model=MessageResponse)
+@router.delete("/api/collage/{collage_id}", response_model=MessageResponse)
+async def delete_collage(
+    collage_id: str,
+    delete_uc: DeleteCollageUseCase = Depends(get_delete_use_case),
+) -> MessageResponse:
+    """Delete a collage and its image."""
+    try:
+        delete_uc.execute(collage_id)
+        return MessageResponse(message="Collage deleted.")
+    except CollageNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
