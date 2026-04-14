@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     model: str = "claude-sonnet-4-20250514"
     max_tokens: int = 4096
+    batch_max_tokens: int = 16384
     context_token_budget: int = 30_000
     log_level: str = "INFO"
 

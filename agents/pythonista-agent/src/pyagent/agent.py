@@ -180,6 +180,151 @@ class Agent:
         )
         return parse_refactor_response(raw_response, file_map, originals)
 
+
+    async def plan_codebase_refactor(self, *, instructions: str = "") -> str:
+        """Generate an overall refactoring plan for the loaded codebase.
+
+        The LLM analyses the full structural summary of the codebase (not
+        individual file source) and returns a strategy to be used in the
+        subsequent batch-execution phase of ``refactor_codebase``.
+
+        Args:
+            instructions: Optional focus or constraints for the plan.
+
+        Returns:
+            A text string describing the overall refactoring strategy.
+
+        Raises:
+            RuntimeError: If no codebase has been loaded.
+        """
+        if self._codebase is None:
+            raise RuntimeError("No codebase loaded. Call load_codebase() first.")
+
+        structural_summary = self._codebase.summary()
+        plan = await self._refactorer.plan(
+            structural_summary,
+            user_request=instructions,
+            knowledge_base=self._kb,
+        )
+        logger.info("Codebase plan generated (%d chars)", len(plan))
+        return plan
+
+    async def refactor_codebase(
+        self,
+        *,
+        instructions: str = "",
+        token_budget: int | None = None,
+        on_progress: "Callable[[str], None] | None" = None,
+    ) -> "RefactorPlan":
+        """Refactor the entire loaded codebase using multi-pass batch execution.
+
+        This is a two-phase process:
+
+        1. **Planning** — The LLM analyses the codebase structure and produces
+           an overall refactoring strategy.
+        2. **Execution** — Source files are grouped into token-budget-constrained
+           batches.  Each batch is refactored with the overall plan as context
+           so changes are consistent across files.
+
+        Args:
+            instructions: Optional focus or constraints for the refactoring.
+            token_budget: Max tokens per batch.  Defaults to the configured
+                ``context_token_budget``.
+            on_progress: Optional callback invoked with a status string before
+                each batch starts (e.g. for updating a progress display).
+
+        Returns:
+            A merged ``RefactorPlan`` containing changes from all batches.
+
+        Raises:
+            RuntimeError: If no codebase has been loaded.
+        """
+        from pathlib import Path
+
+        from pyagent.context import batch_files
+        from pyagent.tools.refactor import parse_refactor_response
+        from pyagent.writer import RefactorPlan
+
+        if self._codebase is None:
+            raise RuntimeError("No codebase loaded. Call load_codebase() first.")
+
+        budget = token_budget or self._settings.context_token_budget
+
+        # Phase 1: Generate overall refactoring plan.
+        if on_progress:
+            on_progress("Generating overall refactoring strategy...")
+        overall_plan = await self.plan_codebase_refactor(instructions=instructions)
+
+        # Phase 2: Batch all source files and refactor each batch.
+        batches = batch_files(self._codebase, token_budget=budget)
+        if not batches:
+            return RefactorPlan(summary="No refactorable files found.")
+
+        combined_plan = RefactorPlan(summary=overall_plan)
+        total_batches = len(batches)
+
+        for batch_idx, batch_modules in enumerate(batches):
+            batch_num = batch_idx + 1
+            batch_label = f"{batch_num}/{total_batches}"
+
+            if on_progress:
+                on_progress(
+                    f"Refactoring batch {batch_label} "
+                    f"({len(batch_modules)} file(s))..."
+                )
+
+            # Build the formatted code string and lookup maps for this batch.
+            code_parts: list[str] = []
+            file_map: dict[str, Path] = {}
+            originals: dict[str, str] = {}
+
+            for module in batch_modules:
+                rel = str(
+                    module.path.relative_to(self._codebase.root)
+                    if module.path.is_relative_to(self._codebase.root)
+                    else module.path
+                )
+                code_parts.append(
+                    f"### FILE: {rel}\n\n```python\n{module.source}\n```"
+                )
+                file_map[rel] = module.path
+                file_map[module.path.name] = module.path
+                originals[rel] = module.source
+                originals[module.path.name] = module.source
+
+            batch_code = "\n\n".join(code_parts)
+
+            result = await self._refactorer.execute_batch(
+                batch_code,
+                batch_label=batch_label,
+                overall_plan=overall_plan,
+                user_request=instructions,
+                knowledge_base=self._kb,
+            )
+
+            batch_plan = parse_refactor_response(result.content, file_map, originals)
+
+            for change in batch_plan.changes:
+                combined_plan.add_change(
+                    path=change.path,
+                    original=change.original,
+                    refactored=change.refactored,
+                    explanation=change.explanation,
+                )
+
+            logger.info(
+                "Batch %s complete: %d change(s)",
+                batch_label,
+                batch_plan.files_changed,
+            )
+
+        logger.info(
+            "Codebase refactoring complete: %d total change(s)",
+            combined_plan.files_changed,
+        )
+        return combined_plan
+
+
     async def explain(
         self,
         code: str,
