@@ -1,18 +1,16 @@
-# infrastructure/image_sourcing/google_image_fetcher.py
-#
-# GoogleImageFetcher — Infrastructure Adapter
-#
-# Implements IReferenceImageSource by scraping Google Images for a keyword
-# and returning the results as raw bytes.
-#
-# This is the only place in the codebase where requests, BeautifulSoup, and
-# the Google Images URL are mentioned. Swapping the image source (e.g. to
-# Bing, Unsplash, or a local fixture directory) requires only implementing
-# IReferenceImageSource and changing the binding in main.py.
+"""
+GoogleImageFetcher — Infrastructure Adapter
+
+Implements IReferenceImageSource by scraping Google Images for a keyword
+and returning the results as raw bytes.
+
+This is the only place in the codebase where requests, BeautifulSoup, and
+the Google Images URL are mentioned. Swapping the image source (e.g. to
+Bing, Unsplash, or a local fixture directory) requires only implementing
+IReferenceImageSource and changing the binding in main.py.
+"""
 
 from __future__ import annotations
-
-from typing import List
 
 import requests
 from bs4 import BeautifulSoup
@@ -37,7 +35,7 @@ class GoogleImageFetcher(IReferenceImageSource):
     # IReferenceImageSource implementation
     # ------------------------------------------------------------------
 
-    def fetch_for_keyword(self, keyword: Keyword) -> List[bytes]:
+    def fetch_for_keyword(self, keyword: Keyword) -> list[bytes]:
         """
         Fetch up to *images_per_keyword* raw image byte strings from Google
         Images for the given keyword. Returns an empty list on any network
@@ -54,13 +52,13 @@ class GoogleImageFetcher(IReferenceImageSource):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _scrape(self, keyword: str) -> List[bytes]:
+    def _scrape(self, keyword: str) -> list[bytes]:
         url = _GOOGLE_IMAGE_SEARCH_URL.format(keyword=keyword)
         response = requests.get(url, timeout=_REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
-        results: List[bytes] = []
+        results: list[bytes] = []
 
         for img_tag in soup.find_all("img"):
             if len(results) >= self._images_per_keyword:

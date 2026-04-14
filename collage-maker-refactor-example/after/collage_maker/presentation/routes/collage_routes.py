@@ -1,20 +1,21 @@
-# presentation/routes/collage_routes.py
-#
-# Collage Blueprint — Presentation Layer
-#
-# Each route does exactly three things:
-#   1. Extract input from the HTTP request.
-#   2. Call a use case.
-#   3. Return an HTTP response (render, redirect, or error).
-#
-# There is no business logic here. Validation of business invariants (blank
-# names, missing collages) is handled by the domain and surfaces here as
-# exceptions that are caught and converted into user-facing flash messages.
+"""
+Collage Blueprint — Presentation Layer
+
+Each route does exactly three things:
+  1. Extract input from the HTTP request.
+  2. Call a use case.
+  3. Return an HTTP response (render, redirect, or error).
+
+There is no business logic here. Validation of business invariants (blank
+names, missing collages) is handled by the domain and surfaces here as
+exceptions that are caught and converted into user-facing flash messages.
+"""
 
 from __future__ import annotations
 
 from flask import (
     Blueprint,
+    Response,
     current_app,
     flash,
     redirect,
@@ -27,6 +28,11 @@ from collage_maker.application.use_cases.create_collage import CreateCollageUseC
 from collage_maker.application.use_cases.delete_collage import DeleteCollageUseCase
 from collage_maker.application.use_cases.list_collages import ListCollagesUseCase
 from collage_maker.application.use_cases.rename_collage import RenameCollageUseCase
+from collage_maker.domain.exceptions import (
+    CollageCreationError,
+    CollageNotFoundError,
+    InvalidCollageNameError,
+)
 
 collage_bp = Blueprint("collages", __name__)
 
@@ -62,7 +68,7 @@ def _thumbnail_size() -> int:
 
 
 @collage_bp.route("/", methods=["GET"])
-def index():
+def index() -> str:
     collages = _list_uc().execute()
     return render_template(
         "index.html",
@@ -73,7 +79,7 @@ def index():
 
 
 @collage_bp.route("/collage", methods=["POST"])
-def create_collage():
+def create_collage() -> Response:
     uploaded_file = request.files.get("file")
     if not uploaded_file:
         flash("Please upload a text file.", "warning")
@@ -87,6 +93,8 @@ def create_collage():
     try:
         _create_uc().execute(text)
         flash("Your collage is being created — check back shortly.", "success")
+    except CollageCreationError as exc:
+        flash(str(exc), "danger")
     except Exception as exc:
         flash(f"Could not create collage: {exc}", "danger")
 
@@ -94,23 +102,23 @@ def create_collage():
 
 
 @collage_bp.route("/collage/<collage_id>/rename", methods=["POST"])
-def rename_collage(collage_id: str):
+def rename_collage(collage_id: str) -> Response:
     new_name = request.form.get("name", "").strip()
     try:
         _rename_uc().execute(collage_id, new_name)
         flash("Collage renamed successfully.", "success")
-    except (LookupError, ValueError) as exc:
+    except (CollageNotFoundError, InvalidCollageNameError) as exc:
         flash(str(exc), "danger")
 
     return redirect(url_for("collages.index"))
 
 
 @collage_bp.route("/collage/<collage_id>/delete", methods=["POST"])
-def delete_collage(collage_id: str):
+def delete_collage(collage_id: str) -> Response:
     try:
         _delete_uc().execute(collage_id)
         flash("Collage deleted.", "success")
-    except LookupError as exc:
+    except CollageNotFoundError as exc:
         flash(str(exc), "danger")
 
     return redirect(url_for("collages.index"))

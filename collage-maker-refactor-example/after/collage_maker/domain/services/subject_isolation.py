@@ -1,26 +1,24 @@
-# domain/services/subject_isolation.py
-#
-# SubjectIsolator — Domain Service
-#
-# Given a single image (as a numpy array), isolates the largest foreground
-# subject using automatic Canny edge detection followed by GrabCut
-# segmentation. Returns the cropped subject with an alpha channel, or None
-# if no subject could be located.
-#
-# Classification: Domain Service
-#   - Encapsulates domain logic (what constitutes "the subject" of an image)
-#     that operates on a single value with no side effects.
-#   - Accepts and returns numpy arrays — plain data, not file paths or URLs.
-#   - Has no knowledge of where images came from or where results will go.
-#   - cv2/numpy are computation libraries, not infrastructure adapters.
-#
-# Replaces: app/computer_vision/edge_detector.py  (EdgeDetector)
-# Renamed because "EdgeDetector" describes the CV technique used, not the
-# domain intent. "SubjectIsolator" names what the service accomplishes.
+"""
+SubjectIsolator — Domain Service
+
+Given a single image (as a numpy array), isolates the largest foreground
+subject using automatic Canny edge detection followed by GrabCut
+segmentation. Returns the cropped subject with an alpha channel, or None
+if no subject could be located.
+
+Classification: Domain Service
+  - Encapsulates domain logic (what constitutes "the subject" of an image)
+    that operates on a single value with no side effects.
+  - Accepts and returns numpy arrays — plain data, not file paths or URLs.
+  - Has no knowledge of where images came from or where results will go.
+  - cv2/numpy are computation libraries, not infrastructure adapters.
+
+Replaces: app/computer_vision/edge_detector.py  (EdgeDetector)
+Renamed because "EdgeDetector" describes the CV technique used, not the
+domain intent. "SubjectIsolator" names what the service accomplishes.
+"""
 
 from __future__ import annotations
-
-from typing import Optional, List
 
 import cv2
 import imutils
@@ -36,7 +34,7 @@ class SubjectIsolator:
         subject = isolator.isolate(image_array)   # np.ndarray | None
     """
 
-    def isolate(self, image: np.ndarray) -> Optional[np.ndarray]:
+    def isolate(self, image: np.ndarray) -> np.ndarray | None:
         """
         Return the largest subject as an RGBA numpy array with a transparent
         background, or None if no subject could be found.
@@ -70,7 +68,7 @@ class SubjectIsolator:
         return cv2.Canny(image, lower, upper)
 
     @staticmethod
-    def _find_contours(edge_image: np.ndarray) -> List[np.ndarray]:
+    def _find_contours(edge_image: np.ndarray) -> list[np.ndarray]:
         raw = cv2.findContours(edge_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         return imutils.grab_contours(raw)
 
@@ -78,8 +76,8 @@ class SubjectIsolator:
     def _crop_subject(
         image: np.ndarray,
         contour_mask: np.ndarray,
-        bounding_rect: List[int],
-    ) -> Optional[np.ndarray]:
+        bounding_rect: list[int],
+    ) -> np.ndarray | None:
         """
         Run GrabCut within the bounding rect, composite an alpha channel onto
         the isolated subject, and return the tightly-cropped RGBA patch.
