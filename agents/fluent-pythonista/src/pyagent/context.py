@@ -467,6 +467,8 @@ def score_modules(
             import_counts[dep] = import_counts.get(dep, 0) + 1
 
     query_terms = _tokenize_query(query) if query else []
+    path_mentions = _extract_path_mentions(query)
+    rename_pairs = _extract_rename_pairs(query)
 
     scored: list[ScoredModule] = []
     for _path, module in context.modules.items():
@@ -520,6 +522,24 @@ def score_modules(
             if relevance > 0:
                 score += relevance
                 reasons.append(f"query match (+{relevance:.1f})")
+
+        # Explicit path mention bonus — the user named this file in the
+        # instructions.  A path match is a direct selection signal, not fuzzy.
+        mention_bonus = _path_mention_score(module, path_mentions, context.root)
+        if mention_bonus > 0:
+            score += mention_bonus
+            reasons.append(f"explicit path mention (+{mention_bonus:.1f})")
+
+        # Rename-aware caller sweep — modules that reference a symbol being
+        # renamed are either the definition site or a caller that also needs
+        # updating.  Both belong in full-source context.
+        rename_bonus, rename_hits = _rename_caller_score(module, rename_pairs)
+        if rename_bonus > 0:
+            score += rename_bonus
+            reasons.append(
+                f"references renamed symbol(s) {', '.join(rename_hits)} "
+                f"(+{rename_bonus:.1f})"
+            )
 
         # Size penalty for very large files (>500 lines).
         if module.line_count > 500:
@@ -774,6 +794,25 @@ def batch_files(
 
 _WORD_RE = re.compile(r"[a-z_][a-z0-9_]*", re.IGNORECASE)
 
+# Matches explicit Python file references in an instructions string, e.g.
+# ``main.py`` or ``collage_maker/domain/services/subject_isolation.py``.  Used
+# to give files the user names directly a large priority bonus so the partial
+# refactor includes them as full source, not just a structural summary.
+_PATH_MENTION_RE = re.compile(r"\b([\w./\\-]+\.py)\b")
+
+# Matches "rename X to Y" style phrases so callers of ``X`` can be included
+# alongside the definition site when partial mode selects files.  Symbols must
+# be at least 3 chars and begin with a letter/underscore to avoid matching
+# line numbers and other noise.
+_RENAME_RE = re.compile(
+    r"\brenam(?:e|ing|ed)\b[^.\n]*?"
+    r"\b(?:the\s+)?(?:class|function|method|symbol)?\s*"
+    r"([A-Za-z_][A-Za-z0-9_]{2,})\s+"
+    r"(?:to|->|into|as)\s+"
+    r"([A-Za-z_][A-Za-z0-9_]{2,})",
+    re.IGNORECASE,
+)
+
 
 def _extract_imports(tree: ast.Module) -> list[str]:
     """Extract import statements as strings."""
@@ -922,6 +961,96 @@ def _tokenize_query(query: str) -> list[str]:
     }
     words = _WORD_RE.findall(query.lower())
     return [w for w in words if w not in stopwords]
+
+
+def _extract_path_mentions(query: str) -> list[str]:
+    """Return lowercased ``.py`` paths named explicitly in a query string.
+
+    When a user writes "update main.py" or "the rename propagates to
+    collage_maker/app.py", those paths are a direct selection signal — far
+    stronger than fuzzy token matching against docstrings.
+    """
+    if not query:
+        return []
+    return [m.lower().replace("\\", "/") for m in _PATH_MENTION_RE.findall(query)]
+
+
+def _path_mention_score(
+    module: ModuleInfo, mentions: list[str], root: Path
+) -> float:
+    """Return a priority bonus for modules whose path the user named directly.
+
+    Scoring:
+      +20 if the module's relative path equals or ends with a mentioned path
+          (e.g. instruction says ``collage_maker/x.py`` and module is
+          ``/abs/collage_maker/x.py``).
+      +15 if only the filename matches (e.g. instruction says ``main.py`` and
+          the module is ``some/sub/dir/main.py``).
+
+    Using the max rather than a sum keeps the bonus bounded even if the user
+    mentions the same path multiple times.
+    """
+    if not mentions:
+        return 0.0
+    rel_path = str(
+        module.path.relative_to(root)
+        if module.path.is_relative_to(root)
+        else module.path
+    ).replace("\\", "/").lower()
+    filename = module.path.name.lower()
+
+    best = 0.0
+    for mention in mentions:
+        if rel_path == mention or rel_path.endswith("/" + mention):
+            best = max(best, 20.0)
+        elif filename == mention:
+            best = max(best, 15.0)
+    return best
+
+
+def _extract_rename_pairs(query: str) -> list[tuple[str, str]]:
+    """Return ``(old, new)`` identifier pairs implied by "rename X to Y" phrases.
+
+    Used to promote modules that reference the old symbol so callers get
+    updated alongside the definition site in partial mode.  Pairs where old
+    and new collide or overlap trivially are discarded.
+    """
+    if not query:
+        return []
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for match in _RENAME_RE.finditer(query):
+        old, new = match.group(1), match.group(2)
+        if old == new:
+            continue
+        key = (old, new)
+        if key in seen:
+            continue
+        seen.add(key)
+        pairs.append(key)
+    return pairs
+
+
+def _rename_caller_score(
+    module: ModuleInfo, pairs: list[tuple[str, str]]
+) -> tuple[float, list[str]]:
+    """Return a priority bonus for modules that reference a symbol being renamed.
+
+    Uses word-boundary matching on the module source so we don't hit ``Foo``
+    inside an unrelated identifier like ``FooBar``.  Caps at one hit per
+    rename pair to avoid runaway scores when a module uses the symbol many
+    times.
+    """
+    if not pairs:
+        return 0.0, []
+    hits: list[str] = []
+    total = 0.0
+    for old, _new in pairs:
+        pattern = re.compile(rf"\b{re.escape(old)}\b")
+        if pattern.search(module.source):
+            total += 12.0
+            hits.append(old)
+    return total, hits
 
 
 def _query_relevance(module: ModuleInfo, terms: list[str], root: Path) -> float:
