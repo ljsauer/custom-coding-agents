@@ -1,7 +1,11 @@
 """Smoke tests for core modules — no API key required."""
 
+import pytest
+import typer
 from pathlib import Path
+from typer.testing import CliRunner
 
+from pyagent.__main__ import _resolve_directory_mode, app
 from pyagent.context import (
     FileCategory,
     assemble_context,
@@ -333,3 +337,53 @@ class TestRefactorWorkflow:
         assert set(report.themes_referenced) == {t.name for t in plan.themes}
         assert report.themes_missing == []
         assert report.followed_plan is True
+
+
+class TestCliModeResolution:
+    """Tests for the implicit file-vs-directory mode selection in `refactor`."""
+
+    def test_directory_no_instructions_picks_full(self, tmp_path: Path) -> None:
+        assert _resolve_directory_mode(tmp_path, "", False, False) == "full"
+
+    def test_directory_with_instructions_picks_partial(
+        self, tmp_path: Path
+    ) -> None:
+        assert (
+            _resolve_directory_mode(tmp_path, "modernize types", False, False)
+            == "partial"
+        )
+
+    def test_partial_flag_forces_partial(self, tmp_path: Path) -> None:
+        assert _resolve_directory_mode(tmp_path, "", True, False) == "partial"
+
+    def test_full_flag_forces_full_over_narrow_instructions(
+        self, tmp_path: Path
+    ) -> None:
+        assert (
+            _resolve_directory_mode(tmp_path, "fix types", False, True) == "full"
+        )
+
+    def test_both_flags_is_error(self, tmp_path: Path) -> None:
+        with pytest.raises(typer.BadParameter):
+            _resolve_directory_mode(tmp_path, "", True, True)
+
+    def test_mode_flag_on_file_is_error(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "x.py"
+        file_path.write_text("x = 1\n")
+        with pytest.raises(typer.BadParameter):
+            _resolve_directory_mode(file_path, "", True, False)
+        with pytest.raises(typer.BadParameter):
+            _resolve_directory_mode(file_path, "", False, True)
+
+    def test_whitespace_only_instructions_treated_as_empty(
+        self, tmp_path: Path
+    ) -> None:
+        assert _resolve_directory_mode(tmp_path, "   \n\t  ", False, False) == "full"
+
+    def test_refactor_help_no_longer_mentions_all_files(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(app, ["refactor", "--help"])
+        assert result.exit_code == 0
+        assert "--all-files" not in result.output
+        assert "--partial" in result.output
+        assert "--full" in result.output
