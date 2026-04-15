@@ -74,6 +74,7 @@ def setup_logging(*, debug: bool = False) -> None:
     if not debug:
         logging.getLogger("PIL").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("requests").setLevel(logging.WARNING)
 
 
 def validate_configuration() -> None:

@@ -92,16 +92,24 @@ class KeywordExtractor:
         self._quality_threshold = quality_threshold
         self._enable_lemmatization = enable_lemmatization
 
-        # Initialize NLTK components
+        # Initialize NLTK components with error handling
         if self._enable_lemmatization:
-            self._lemmatizer = WordNetLemmatizer()
+            try:
+                self._lemmatizer = WordNetLemmatizer()
+            except Exception as e:
+                logger.warning(f"Failed to initialize lemmatizer, disabling: {e}")
+                self._enable_lemmatization = False
 
         # Compile noise patterns for efficiency
-        self._noise_patterns = [
-            re.compile(pattern, re.IGNORECASE) for pattern in _NOISE_PATTERNS
-        ]
+        try:
+            self._noise_patterns = [
+                re.compile(pattern, re.IGNORECASE) for pattern in _NOISE_PATTERNS
+            ]
+        except Exception as e:
+            logger.error(f"Failed to compile noise patterns: {e}")
+            self._noise_patterns = []
 
-        logger.info("Keyword Extractor initialized", self.__class__.__name__)
+        logger.info("Keyword extractor initialized successfully")
 
     # ------------------------------------------------------------------
     # Public API
@@ -114,7 +122,7 @@ class KeywordExtractor:
         Returns the top *n_keywords* Keywords ranked by a composite score
         that considers frequency, length, and semantic quality.
         """
-        logger.info("Beginning keyword extraction. . .")
+        logger.info("Beginning keyword extraction...")
 
         if not text or len(text.strip()) < 50:
             logger.warning(
@@ -122,30 +130,43 @@ class KeywordExtractor:
             )
             return []
 
-        # Enhanced preprocessing pipeline
-        tokens = self._preprocess_text(text)
+        try:
+            # Enhanced preprocessing pipeline
+            tokens = self._preprocess_text(text)
+            logger.info(f"Extracted {len(tokens)} valid tokens from text")
 
-        logger.info(f"Got {len(tokens)} tokens from text")
+            if not tokens:
+                logger.warning("No valid tokens found after preprocessing")
+                return []
 
-        # Frequency analysis with quality scoring
-        freq_dist = FreqDist(tokens)
-        keyword_candidates = self._score_candidates(freq_dist)
+            # Frequency analysis with quality scoring
+            freq_dist = FreqDist(tokens)
+            keyword_candidates = self._score_candidates(freq_dist)
 
-        # Filter and rank by composite score
-        high_quality_keywords = [
-            kw for kw in keyword_candidates if kw.is_high_quality()
-        ]
+            # Filter and rank by composite score
+            high_quality_keywords = [
+                kw for kw in keyword_candidates 
+                if kw.is_high_quality() and kw.confidence >= self._quality_threshold
+            ]
 
-        # Sort by composite score (frequency * confidence)
-        ranked_keywords = sorted(
-            high_quality_keywords,
-            key=lambda kw: (kw.frequency * kw.confidence, len(kw.text)),
-            reverse=True,
-        )
+            # Sort by composite score (frequency * confidence)
+            ranked_keywords = sorted(
+                high_quality_keywords,
+                key=lambda kw: (kw.frequency * kw.confidence, len(kw.text)),
+                reverse=True,
+            )
 
-        logger.info(f"Top 5 keywords by rank: {ranked_keywords[:5]}")
+            logger.info(f"Found {len(ranked_keywords)} high-quality keywords")
+            
+            if ranked_keywords:
+                top_5 = [f"{kw.text}({kw.frequency})" for kw in ranked_keywords[:5]]
+                logger.info(f"Top 5 keywords: {top_5}")
 
-        return ranked_keywords[: self._n_keywords]
+            return ranked_keywords[: self._n_keywords]
+            
+        except Exception as e:
+            logger.error(f"Keyword extraction failed: {e}")
+            return []
 
     def extract_with_categories(self, text: str) -> dict[str, list[Keyword]]:
         """
@@ -175,90 +196,119 @@ class KeywordExtractor:
 
     def _preprocess_text(self, text: str) -> list[str]:
         """Enhanced text preprocessing with multiple cleaning stages."""
-        # Stage 1: Basic cleaning
-        logger.info(f"Incoming text length: {len(text)}")
-        text = self._clean_text(text)
+        try:
+            # Stage 1: Basic cleaning
+            logger.debug(f"Incoming text length: {len(text)}")
+            text = self._clean_text(text)
 
-        # Stage 2: Tokenization
-        tokens = word_tokenize(text.lower())
+            # Stage 2: Tokenization
+            tokens = word_tokenize(text.lower())
+            logger.debug(f"Initial tokens: {len(tokens)}")
 
-        # Stage 3: Advanced filtering
-        filtered_tokens = []
-        stopword_set = self._get_stopwords()
+            # Stage 3: Advanced filtering
+            filtered_tokens = []
+            stopword_set = self._get_stopwords()
 
-        for token in tokens:
-            cleaned_token = self._clean_token(token)
-            if self._is_valid_token(cleaned_token, stopword_set):
-                if self._enable_lemmatization:
-                    cleaned_token = self._lemmatizer.lemmatize(cleaned_token)
-                filtered_tokens.append(cleaned_token)
+            for token in tokens:
+                try:
+                    cleaned_token = self._clean_token(token)
+                    if self._is_valid_token(cleaned_token, stopword_set):
+                        if self._enable_lemmatization and self._lemmatizer:
+                            cleaned_token = self._lemmatizer.lemmatize(cleaned_token)
+                        filtered_tokens.append(cleaned_token)
+                except Exception as e:
+                    logger.debug(f"Error processing token '{token}': {e}")
+                    continue
 
-        return filtered_tokens
+            logger.debug(f"Filtered tokens: {len(filtered_tokens)}")
+            return filtered_tokens
+            
+        except Exception as e:
+            logger.error(f"Text preprocessing failed: {e}")
+            return []
 
     def _clean_text(self, text: str) -> str:
         """Clean text of common artifacts and formatting issues."""
+        try:
+            # Remove URLs and email addresses
+            text = re.sub(r"https?://\S+|www\.\S+|\S+@\S+", " ", text)
 
-        # Remove URLs and email addresses
-        text = re.sub(r"https?://\S+|www\.\S+|\S+@\S+", " ", text)
+            # Remove HTML-like tags
+            text = re.sub(r"<[^>]+>", " ", text)
 
-        # Remove HTML-like tags
-        text = re.sub(r"<[^>]+>", " ", text)
+            # Normalize whitespace
+            text = re.sub(r"\s+", " ", text)
 
-        # Normalize whitespace
-        text = re.sub(r"\s+", " ", text)
+            # Remove very long "words" (likely corrupted data)
+            words = text.split()
+            filtered_words = [w for w in words if len(w) <= 50]
 
-        # Remove very long "words" (likely corrupted data)
-        words = text.split()
-        filtered_words = [w for w in words if len(w) <= 50]
-
-        return " ".join(filtered_words)
+            return " ".join(filtered_words)
+            
+        except Exception as e:
+            logger.warning(f"Text cleaning failed, using original: {e}")
+            return text
 
     def _clean_token(self, token: str) -> str:
         """Clean individual tokens."""
+        try:
+            # Strip problematic characters from edges
+            cleaned = token.strip(_STRIP_CHARS)
 
-        # Strip problematic characters from edges
-        cleaned = token.strip(_STRIP_CHARS)
+            # Handle contractions and hyphenated words
+            if "'" in cleaned and len(cleaned) > 3:
+                # Keep meaningful contractions like "don't" -> "dont"
+                cleaned = cleaned.replace("'", "")
 
-        # Handle contractions and hyphenated words
-        if "'" in cleaned and len(cleaned) > 3:
-            # Keep meaningful contractions like "don't" -> "dont"
-            cleaned = cleaned.replace("'", "")
-
-        return cleaned
+            return cleaned
+        except Exception:
+            return token
 
     def _is_valid_token(self, token: str, stopwords_set: set[str]) -> bool:
         """Enhanced token validation with multiple criteria."""
+        try:
+            if not token or len(token) < self._min_word_length:
+                return False
 
-        if not token or len(token) < self._min_word_length:
+            if len(token) > self._max_word_length:
+                return False
+
+            if token in stopwords_set:
+                return False
+
+            if token in _WEB_ARTIFACTS:
+                return False
+
+            # Check against noise patterns
+            if any(pattern.match(token) for pattern in self._noise_patterns):
+                return False
+
+            # Must contain at least some letters
+            if not any(c.isalpha() for c in token):
+                return False
+
+            # Reject if mostly punctuation
+            alpha_ratio = sum(c.isalpha() for c in token) / len(token)
+            if alpha_ratio < 0.5:
+                return False
+
+            return True
+            
+        except Exception:
             return False
-
-        if len(token) > self._max_word_length:
-            return False
-
-        if token in stopwords_set:
-            return False
-
-        if token in _WEB_ARTIFACTS:
-            return False
-
-        # Check against noise patterns
-        if any(pattern.match(token) for pattern in self._noise_patterns):
-            return False
-
-        # Must contain at least some letters
-        if not any(c.isalpha() for c in token):
-            return False
-
-        # Reject if mostly punctuation
-        alpha_ratio = sum(c.isalpha() for c in token) / len(token)
-        if alpha_ratio < 0.5:
-            return False
-
-        return True
 
     def _get_stopwords(self) -> set[str]:
-        """Get comprehensive stopword set."""
-        base_stopwords = set(stopwords.words("english"))
+        """Get comprehensive stopword set with error handling."""
+        try:
+            base_stopwords = set(stopwords.words("english"))
+        except Exception as e:
+            logger.warning(f"Failed to load NLTK stopwords, using minimal set: {e}")
+            base_stopwords = {
+                "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+                "has", "he", "in", "is", "it", "its", "of", "on", "that", "the",
+                "to", "was", "will", "with"
+            }
+            
         punctuation_set = set(punctuation)
         extra_stopwords = set(self._extra_stopwords)
 
@@ -274,11 +324,15 @@ class KeywordExtractor:
 
         for word, frequency in freq_dist.items():
             if frequency >= self._min_frequency:
-                confidence = self._calculate_confidence_score(
-                    word, frequency, freq_dist
-                )
-                keyword = Keyword(text=word, frequency=frequency, confidence=confidence)
-                candidates.append(keyword)
+                try:
+                    confidence = self._calculate_confidence_score(
+                        word, frequency, freq_dist
+                    )
+                    keyword = Keyword(text=word, frequency=frequency, confidence=confidence)
+                    candidates.append(keyword)
+                except Exception as e:
+                    logger.debug(f"Failed to score candidate '{word}': {e}")
+                    continue
 
         return candidates
 
@@ -294,28 +348,34 @@ class KeywordExtractor:
         - Letter/digit ratio (more letters is better)
         - Relative frequency compared to most common words
         """
-        # Base frequency score with diminishing returns
-        top_freq_word = freq_dist.max()
-        freq_score = freq_dist.freq(top_freq_word)
+        try:
+            # Base frequency score with diminishing returns
+            max_freq = max(freq_dist.values()) if freq_dist.values() else 1
+            freq_score = min(frequency / max_freq, 1.0)
 
-        # Length score - prefer moderate length words
-        length_score = self._calculate_length_score(word)
+            # Length score - prefer moderate length words
+            length_score = self._calculate_length_score(word)
 
-        # Character composition score
-        char_score = self._calculate_character_score(word)
+            # Character composition score
+            char_score = self._calculate_character_score(word)
 
-        # Relative frequency score
-        relative_score = freq_dist.freq(word)
+            # Relative frequency score
+            total_words = sum(freq_dist.values())
+            relative_score = frequency / total_words if total_words > 0 else 0
 
-        # Weighted combination
-        confidence = (
-            freq_score * 0.4
-            + length_score * 0.2
-            + char_score * 0.2
-            + relative_score * 0.2
-        )
+            # Weighted combination
+            confidence = (
+                freq_score * 0.4
+                + length_score * 0.2
+                + char_score * 0.2
+                + relative_score * 0.2
+            )
 
-        return min(1.0, confidence)
+            return min(1.0, max(0.0, confidence))
+            
+        except Exception as e:
+            logger.debug(f"Confidence scoring failed for '{word}': {e}")
+            return 0.5  # Default moderate confidence
 
     def _calculate_length_score(self, word: str) -> float:
         """Score based on word length - prefer moderate lengths."""

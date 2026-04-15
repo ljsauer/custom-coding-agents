@@ -28,6 +28,9 @@ from collage_maker.domain.exceptions import (
     CollageNotFoundError,
     InvalidCollageNameError,
     DomainError,
+    ImageSourceError,
+    NetworkError,
+    RateLimitError,
 )
 from collage_maker.domain.ports.collage_storage import ICollageStorage
 from collage_maker.presentation.dependencies import (
@@ -87,6 +90,7 @@ async def index(
             f'alt="Collage: {collage.name}" loading="lazy">'
             f"<h3>{collage.name}</h3>"
             f"<p>Keywords: {', '.join(collage.keyword_texts())}</p>"
+            f"<p>Quality: {collage.get_quality_score():.1%}</p>"
             f'<form method="post" action="/api/collage/{collage.id}/rename">'
             f'<input type="text" name="name" value="{collage.name}" required>'
             f'<button type="submit">Rename</button>'
@@ -111,6 +115,7 @@ async def index(
             .collage-item img {{ width: 100%; height: auto; }}
             form {{ margin-top: 10px; }}
             input, button {{ margin: 5px; padding: 8px; }}
+            .error-banner {{ background: #fee; border: 1px solid #fcc; padding: 10px; margin-bottom: 20px; border-radius: 4px; }}
         </style>
     </head>
     <body>
@@ -119,6 +124,7 @@ async def index(
             <input type="file" name="file" accept=".txt,.md,.rtf" required>
             <button type="submit">Create Collage</button>
         </form>
+        <p><small>Note: Image fetching may take 30-60 seconds. Please be patient!</small></p>
         <div class="gallery">
             {"".join(html_items)}
         </div>
@@ -155,6 +161,9 @@ async def list_collages(
             image_url=f"/static/{storage.public_path(collage.id)}",
             created_at=collage.created_at,
             updated_at=collage.updated_at,
+            image_count=collage.image_count,
+            processing_time_seconds=collage.processing_time_seconds,
+            quality_score=collage.get_quality_score(),
         )
         for collage in collages
     ]
@@ -217,7 +226,8 @@ async def create_collage(
         background_tasks.add_task(_safe_process_collage_creation, text, create_uc)
 
         return MessageResponse(
-            message="Your collage is being created in the background. Please refresh the page in a few moments to see the result."
+            message="Your collage is being created in the background. Please refresh the page in a few moments to see the result. "
+                    "Note: If image fetching fails, the process may take longer or fail silently."
         )
 
     except CollageCreationError as exc:
@@ -229,6 +239,7 @@ async def create_collage(
         ) from exc
     except Exception as exc:
         # Log the full exception in production
+        logger.error("Unexpected error during collage upload: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Could not create collage: {exc}"
         ) from exc
@@ -334,10 +345,27 @@ async def delete_collage(
 async def _safe_process_collage_creation(
     text_content: str, create_uc: CreateCollageUseCase
 ) -> None:
-    """Safe wrapper that prevents exceptions in background task from bubbling up to FastAPI."""
+    """
+    Safe wrapper that prevents exceptions in background task from bubbling up to FastAPI.
+    
+    Enhanced with specific error handling for image source failures.
+    """
     try:
-        # This is where line 84 is probably failing
         collage = create_uc.execute(text_content)
-        logger.info(f"Collage created successfully: {collage.name}")
+        logger.info(f"Collage created successfully: {collage.name} (ID: {collage.id})")
+    except ImageSourceError as e:
+        logger.error(f"Image source error during background processing: {e}")
+        logger.error(f"Source: {e.source_name}, Details: {e}")
+    except NetworkError as e:
+        logger.error(f"Network error during background processing: {e}")
+        logger.error(f"URL: {e.source_url}, Status: {e.status_code}")
+    except RateLimitError as e:
+        logger.error(f"Rate limit error during background processing: {e}")
+        logger.error(f"Service: {e.service_name}, Reset in: {e.reset_time}s")
+    except CollageCreationError as e:
+        logger.error(f"Collage creation error during background processing: {e}")
+        logger.error(f"Stage: {e.stage}, Cause: {e.cause}")
     except DomainError as e:
-        logger.error(e)
+        logger.error(f"Domain error during background processing: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error during background processing: {e}", exc_info=True)

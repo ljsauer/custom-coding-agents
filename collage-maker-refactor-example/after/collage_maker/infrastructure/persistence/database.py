@@ -72,6 +72,9 @@ def init_db(database_path: str) -> Engine:
             },
             pool_pre_ping=True,  # Verify connections before use
             pool_recycle=3600,  # Recycle connections every hour
+            # Connection pool configuration for better concurrency
+            pool_size=10,
+            max_overflow=20,
         )
 
         # Register SQLite configuration event handler
@@ -123,8 +126,12 @@ def _configure_sqlite_connection(engine: Engine) -> None:
             cursor.execute("PRAGMA temp_store=memory")  # Use RAM for temp tables
             cursor.execute("PRAGMA mmap_size=268435456")  # 256MB memory mapping
 
-            # Query optimization
+            # Improve query performance
             cursor.execute("PRAGMA optimize")
+            cursor.execute("PRAGMA analysis_limit=1000")
+
+            # Set reasonable timeouts
+            cursor.execute("PRAGMA busy_timeout=30000")  # 30 seconds
 
             cursor.close()
             logger.info("SQLite pragmas configured successfully")
