@@ -72,7 +72,7 @@ class ConversationMemory:
     def clear(self) -> None:
         """Reset the conversation history."""
         self.messages.clear()
-        logger.debug("Conversation memory cleared")
+        logger.info("Conversation memory cleared")
 
     @property
     def turn_count(self) -> int:
@@ -85,4 +85,4 @@ class ConversationMemory:
         if len(self.messages) > self.max_messages:
             trimmed = len(self.messages) - self.max_messages
             self.messages = self.messages[trimmed:]
-            logger.debug("Trimmed %d messages from conversation history", trimmed)
+            logger.info("Trimmed %d messages from conversation history", trimmed)

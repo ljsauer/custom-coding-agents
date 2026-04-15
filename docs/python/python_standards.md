@@ -336,7 +336,7 @@ Within each group, imports are sorted alphabetically. Use `ruff` (specifically
   try:
       do_something()
   except SomeError:
-      logger.debug("Ignoring expected SomeError during cleanup")
+      logger.info("Ignoring expected SomeError during cleanup")
   ```
 
 ### 8.2 Context Managers

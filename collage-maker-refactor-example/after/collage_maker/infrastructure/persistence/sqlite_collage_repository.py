@@ -13,10 +13,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import Engine, func, or_
+from sqlalchemy import Engine, func
 from sqlalchemy.exc import SQLAlchemyError
 
-from collage_maker.domain.common.utils import utcnow
 from collage_maker.domain.model.collage import Collage
 from collage_maker.domain.model.keyword import Keyword
 from collage_maker.domain.ports.collage_repository import ICollageRepository
@@ -27,7 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 class SqliteCollageRepository(ICollageRepository):
+    """SQLite-backed repository for Collage aggregates with enhanced querying."""
+
     def __init__(self, engine: Engine) -> None:
+        """
+        Initialize repository with SQLAlchemy engine.
+
+        Args:
+            engine: SQLAlchemy engine configured for SQLite
+        """
         self._engine = engine
 
     # ------------------------------------------------------------------
@@ -35,7 +42,15 @@ class SqliteCollageRepository(ICollageRepository):
     # ------------------------------------------------------------------
 
     def save(self, collage: Collage) -> None:
-        """Persist a new or updated Collage aggregate."""
+        """
+        Persist a new or updated Collage aggregate.
+
+        Args:
+            collage: Domain aggregate to persist
+
+        Raises:
+            SQLAlchemyError: If database operation fails
+        """
         try:
             with make_session(self._engine) as session:
                 row = session.get(CollageRow, collage.id)
@@ -57,10 +72,18 @@ class SqliteCollageRepository(ICollageRepository):
                 session.commit()
         except SQLAlchemyError as e:
             logger.error("Failed to save collage %s: %s", collage.id, e)
-            raise
+            raise SQLAlchemyError(f"Failed to save collage {collage.id}") from e
 
     def find_by_id(self, collage_id: str) -> Collage | None:
-        """Return the Collage with the given id, or None if not found."""
+        """
+        Return the Collage with the given id, or None if not found.
+
+        Args:
+            collage_id: Unique identifier for the collage
+
+        Returns:
+            Collage domain object or None if not found
+        """
         try:
             with make_session(self._engine) as session:
                 row = session.get(CollageRow, collage_id)
@@ -70,7 +93,12 @@ class SqliteCollageRepository(ICollageRepository):
             return None
 
     def find_all(self) -> list[Collage]:
-        """Return all persisted Collages, ordered by creation date descending."""
+        """
+        Return all persisted Collages, ordered by creation date descending.
+
+        Returns:
+            List of all Collage domain objects, newest first
+        """
         try:
             with make_session(self._engine) as session:
                 rows = (
@@ -86,7 +114,15 @@ class SqliteCollageRepository(ICollageRepository):
     def delete(self, collage_id: str) -> bool:
         """
         Remove the Collage with the given id from the store.
-        Returns True if a collage was deleted, False if none existed.
+
+        Args:
+            collage_id: Unique identifier for the collage
+
+        Returns:
+            True if a collage was deleted, False if none existed
+
+        Raises:
+            SQLAlchemyError: If database operation fails
         """
         try:
             with make_session(self._engine) as session:
@@ -99,14 +135,22 @@ class SqliteCollageRepository(ICollageRepository):
                 return False
         except SQLAlchemyError as e:
             logger.error("Failed to delete collage %s: %s", collage_id, e)
-            raise
+            raise SQLAlchemyError(f"Failed to delete collage {collage_id}") from e
 
     # ------------------------------------------------------------------
     # Enhanced query methods
     # ------------------------------------------------------------------
 
     def find_by_name_pattern(self, pattern: str) -> list[Collage]:
-        """Find collages whose names match the given pattern (case-insensitive)."""
+        """
+        Find collages whose names match the given pattern (case-insensitive).
+
+        Args:
+            pattern: Text pattern to search for in collage names
+
+        Returns:
+            List of matching Collage domain objects, newest first
+        """
         try:
             with make_session(self._engine) as session:
                 search_pattern = f"%{pattern}%"
@@ -122,9 +166,17 @@ class SqliteCollageRepository(ICollageRepository):
             return []
 
     def find_recent(self, hours: int = 24) -> list[Collage]:
-        """Find collages created within the specified number of hours."""
+        """
+        Find collages created within the specified number of hours.
+
+        Args:
+            hours: Number of hours to look back (default: 24)
+
+        Returns:
+            List of recent Collage domain objects, newest first
+        """
         try:
-            cutoff_time = utcnow() - timedelta(hours=hours)
+            cutoff_time = datetime.now(datetime.UTC) - timedelta(hours=hours)
             with make_session(self._engine) as session:
                 rows = (
                     session.query(CollageRow)
@@ -138,7 +190,15 @@ class SqliteCollageRepository(ICollageRepository):
             return []
 
     def find_by_keyword(self, keyword_text: str) -> list[Collage]:
-        """Find collages that contain the specified keyword."""
+        """
+        Find collages that contain the specified keyword.
+
+        Args:
+            keyword_text: Keyword to search for
+
+        Returns:
+            List of matching Collage domain objects, newest first
+        """
         try:
             with make_session(self._engine) as session:
                 search_pattern = f"%{keyword_text.lower()}%"
@@ -160,7 +220,12 @@ class SqliteCollageRepository(ICollageRepository):
             return []
 
     def count_all(self) -> int:
-        """Return the total number of stored collages."""
+        """
+        Return the total number of stored collages.
+
+        Returns:
+            Total count of collages in the repository
+        """
         try:
             with make_session(self._engine) as session:
                 return session.query(func.count(CollageRow.id)).scalar() or 0
@@ -169,7 +234,15 @@ class SqliteCollageRepository(ICollageRepository):
             return 0
 
     def exists(self, collage_id: str) -> bool:
-        """Check if a collage with the given ID exists."""
+        """
+        Check if a collage with the given ID exists.
+
+        Args:
+            collage_id: Unique identifier for the collage
+
+        Returns:
+            True if collage exists, False otherwise
+        """
         try:
             with make_session(self._engine) as session:
                 return session.query(
@@ -185,11 +258,22 @@ class SqliteCollageRepository(ICollageRepository):
 
     @staticmethod
     def _to_domain(row: CollageRow) -> Collage:
-        """Convert ORM row to domain aggregate."""
+        """
+        Convert ORM row to domain aggregate.
+
+        Args:
+            row: SQLAlchemy ORM row
+
+        Returns:
+            Collage domain object
+
+        Note:
+            Includes fallback logic for corrupted data
+        """
         try:
             keywords = [
-                Keyword(text=word.strip()) 
-                for word in row.keywords_csv.split(",") 
+                Keyword(text=word.strip())
+                for word in row.keywords_csv.split(",")
                 if word.strip()
             ]
             return Collage(
@@ -206,11 +290,19 @@ class SqliteCollageRepository(ICollageRepository):
                 id=row.id,
                 name=row.name or "Unnamed Collage",
                 keywords=[Keyword(text="unknown")],
-                created_at=row.created_at or utcnow(),
-                updated_at=row.updated_at or utcnow(),
+                created_at=row.created_at or datetime.now(datetime.UTC),
+                updated_at=row.updated_at or datetime.now(datetime.UTC),
             )
 
     @staticmethod
     def _keywords_to_csv(keywords: list[Keyword]) -> str:
-        """Convert keywords to CSV string for storage."""
+        """
+        Convert keywords to CSV string for storage.
+
+        Args:
+            keywords: List of Keyword domain objects
+
+        Returns:
+            Comma-separated string representation
+        """
         return ",".join(kw.text for kw in keywords)

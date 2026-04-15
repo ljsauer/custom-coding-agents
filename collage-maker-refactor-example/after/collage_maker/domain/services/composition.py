@@ -139,7 +139,7 @@ class CompositionService:
                         alpha_s * subject[:, :, c]
                         + alpha_l * background[y1:y2, x1:x2, c]
                     )
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 # Mismatched shapes can occur when subjects are near the edge;
                 # skip rather than crash.
                 continue

@@ -131,7 +131,7 @@ class RefactorTool:
 
         rag_context = ""
         if knowledge_base:
-            query = f"refactoring plan codebase {user_request or ''}".strip()
+            query = f"{user_request or ''}".strip()
             rag_context = knowledge_base.retrieve_formatted(
                 query,
                 sources=self.relevant_sources(),
