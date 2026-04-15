@@ -8,10 +8,14 @@ dependencies = [
     "python-dotenv>=1.0",
     "numpy>=2.0",
     "sentence-transformers>=3.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "typer>=0.12",
+    "rich>=13.0",
 ]
 
 [project.scripts]
-archagent = "archagent.__main__:main"
+archagent = "archagent.__main__:app"
 
 [build-system]
 requires = ["hatchling"]
