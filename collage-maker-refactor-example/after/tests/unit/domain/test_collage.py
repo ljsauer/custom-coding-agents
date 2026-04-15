@@ -4,7 +4,6 @@
 # Zero I/O. Zero framework. Pure domain logic.
 
 import pytest
-
 from collage_maker.domain.model.collage import Collage
 from collage_maker.domain.model.keyword import Keyword
 
