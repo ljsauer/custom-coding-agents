@@ -15,7 +15,6 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine, func, desc
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from collage_maker.domain.model.collage import Collage
 from collage_maker.domain.model.keyword import Keyword
@@ -55,11 +54,11 @@ class SqliteCollageRepository(ICollageRepository):
         """
         if not collage.id:
             raise ValueError("Collage ID cannot be empty")
-            
+
         try:
             with make_session(self._engine) as session:
                 row = session.get(CollageRow, collage.id)
-                
+
                 if row is None:
                     # Create new record
                     row = CollageRow(
@@ -77,10 +76,10 @@ class SqliteCollageRepository(ICollageRepository):
                     row.keywords_csv = self._keywords_to_csv(collage.keywords)
                     row.updated_at = collage.updated_at or datetime.now(timezone.utc)
                     logger.info("Updating existing collage: %s", collage.id)
-                    
+
                 session.commit()
                 logger.debug("Successfully saved collage: %s", collage.id)
-                
+
         except SQLAlchemyError as e:
             logger.error("Failed to save collage %s: %s", collage.id, e)
             raise SQLAlchemyError(f"Failed to save collage {collage.id}") from e
@@ -100,7 +99,7 @@ class SqliteCollageRepository(ICollageRepository):
         """
         if not collage_id:
             return None
-            
+
         try:
             with make_session(self._engine) as session:
                 row = session.get(CollageRow, collage_id)
@@ -156,7 +155,7 @@ class SqliteCollageRepository(ICollageRepository):
         """
         if not collage_id:
             return False
-            
+
         try:
             with make_session(self._engine) as session:
                 row = session.get(CollageRow, collage_id)
@@ -191,7 +190,7 @@ class SqliteCollageRepository(ICollageRepository):
         """
         if not pattern:
             return []
-            
+
         try:
             with make_session(self._engine) as session:
                 search_pattern = f"%{pattern.strip()}%"
@@ -202,13 +201,17 @@ class SqliteCollageRepository(ICollageRepository):
                     .all()
                 )
                 collages = [self._to_domain(row) for row in rows]
-                logger.debug("Found %d collages matching pattern '%s'", len(collages), pattern)
+                logger.debug(
+                    "Found %d collages matching pattern '%s'", len(collages), pattern
+                )
                 return collages
         except SQLAlchemyError as e:
             logger.error("Failed to find collages by name pattern '%s': %s", pattern, e)
             return []
         except Exception as e:
-            logger.error("Unexpected error finding collages by pattern '%s': %s", pattern, e)
+            logger.error(
+                "Unexpected error finding collages by pattern '%s': %s", pattern, e
+            )
             return []
 
     def find_recent(self, hours: int = 24) -> list[Collage]:
@@ -223,7 +226,7 @@ class SqliteCollageRepository(ICollageRepository):
         """
         if hours <= 0:
             return []
-            
+
         try:
             cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
             with make_session(self._engine) as session:
@@ -234,7 +237,9 @@ class SqliteCollageRepository(ICollageRepository):
                     .all()
                 )
                 collages = [self._to_domain(row) for row in rows]
-                logger.debug("Found %d recent collages (last %d hours)", len(collages), hours)
+                logger.debug(
+                    "Found %d recent collages (last %d hours)", len(collages), hours
+                )
                 return collages
         except SQLAlchemyError as e:
             logger.error("Failed to find recent collages: %s", e)
@@ -255,7 +260,7 @@ class SqliteCollageRepository(ICollageRepository):
         """
         if not keyword_text:
             return []
-            
+
         try:
             with make_session(self._engine) as session:
                 # Use ilike for case-insensitive search
@@ -266,27 +271,36 @@ class SqliteCollageRepository(ICollageRepository):
                     .order_by(desc(CollageRow.created_at))
                     .all()
                 )
-                
+
                 # Additional filtering to ensure exact keyword match
                 # This handles cases where a search for "cat" shouldn't match "category"
                 collages = []
                 for row in rows:
                     try:
                         collage = self._to_domain(row)
-                        if any(kw.text.lower() == keyword_text.lower() for kw in collage.keywords):
+                        if any(
+                            kw.text.lower() == keyword_text.lower()
+                            for kw in collage.keywords
+                        ):
                             collages.append(collage)
                     except Exception as e:
-                        logger.warning("Failed to process collage row during keyword search: %s", e)
+                        logger.warning(
+                            "Failed to process collage row during keyword search: %s", e
+                        )
                         continue
-                        
-                logger.debug("Found %d collages with keyword '%s'", len(collages), keyword_text)
+
+                logger.debug(
+                    "Found %d collages with keyword '%s'", len(collages), keyword_text
+                )
                 return collages
-                
+
         except SQLAlchemyError as e:
             logger.error("Failed to find collages by keyword '%s': %s", keyword_text, e)
             return []
         except Exception as e:
-            logger.error("Unexpected error finding collages by keyword '%s': %s", keyword_text, e)
+            logger.error(
+                "Unexpected error finding collages by keyword '%s': %s", keyword_text, e
+            )
             return []
 
     def count_all(self) -> int:
@@ -320,7 +334,7 @@ class SqliteCollageRepository(ICollageRepository):
         """
         if not collage_id:
             return False
-            
+
         try:
             with make_session(self._engine) as session:
                 exists = session.query(
@@ -332,7 +346,9 @@ class SqliteCollageRepository(ICollageRepository):
             logger.error("Failed to check existence of collage %s: %s", collage_id, e)
             return False
         except Exception as e:
-            logger.error("Unexpected error checking collage existence %s: %s", collage_id, e)
+            logger.error(
+                "Unexpected error checking collage existence %s: %s", collage_id, e
+            )
             return False
 
     # ------------------------------------------------------------------
@@ -363,27 +379,31 @@ class SqliteCollageRepository(ICollageRepository):
                         try:
                             keywords.append(Keyword(text=word))
                         except Exception as e:
-                            logger.warning("Failed to create keyword from '%s': %s", word, e)
+                            logger.warning(
+                                "Failed to create keyword from '%s': %s", word, e
+                            )
                             continue
-            
+
             # Ensure we have at least one keyword
             if not keywords:
-                logger.warning("No valid keywords found for collage %s, adding default", row.id)
+                logger.warning(
+                    "No valid keywords found for collage %s, adding default", row.id
+                )
                 keywords = [Keyword(text="unknown")]
-            
+
             # Handle timezone-naive datetimes
             created_at = row.created_at
             if created_at and created_at.tzinfo is None:
                 created_at = created_at.replace(tzinfo=timezone.utc)
             elif created_at is None:
                 created_at = datetime.now(timezone.utc)
-                
+
             updated_at = row.updated_at
             if updated_at and updated_at.tzinfo is None:
                 updated_at = updated_at.replace(tzinfo=timezone.utc)
             elif updated_at is None:
                 updated_at = created_at
-                
+
             return Collage(
                 id=row.id,
                 name=row.name or "Unnamed Collage",
@@ -391,9 +411,11 @@ class SqliteCollageRepository(ICollageRepository):
                 created_at=created_at,
                 updated_at=updated_at,
             )
-            
+
         except Exception as e:
-            logger.error("Failed to convert row to domain object for collage %s: %s", row.id, e)
+            logger.error(
+                "Failed to convert row to domain object for collage %s: %s", row.id, e
+            )
             # Create a minimal valid Collage as fallback
             return Collage(
                 id=row.id,
@@ -416,16 +438,16 @@ class SqliteCollageRepository(ICollageRepository):
         """
         if not keywords:
             return ""
-            
+
         try:
             # Filter out empty or invalid keywords
             valid_texts = []
             for kw in keywords:
-                if hasattr(kw, 'text') and kw.text and kw.text.strip():
+                if hasattr(kw, "text") and kw.text and kw.text.strip():
                     # Escape commas in keyword text
-                    text = kw.text.strip().replace(',', '&#44;')
+                    text = kw.text.strip().replace(",", "&#44;")
                     valid_texts.append(text)
-                    
+
             return ",".join(valid_texts)
         except Exception as e:
             logger.warning("Failed to convert keywords to CSV: %s", e)

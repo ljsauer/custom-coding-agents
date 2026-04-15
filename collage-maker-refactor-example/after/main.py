@@ -42,7 +42,7 @@ from collage_maker.infrastructure.image_sourcing.google_image_fetcher import (
     GoogleImageFetcher,
 )
 from collage_maker.infrastructure.storage.local_disk_storage import LocalDiskStorage
-from collage_maker.infrastructure.rendering.opencv_renderer import OpenCVRenderer
+from collage_maker.infrastructure.rendering.composition_renderer import CompositionRendererAdapter
 
 # -- Domain services ---------------------------------------------------------
 from collage_maker.domain.services.keyword_extraction import KeywordExtractor
@@ -134,7 +134,7 @@ def create_infrastructure_adapters() -> tuple[
     SqliteCollageRepository,
     GoogleImageFetcher,
     LocalDiskStorage,
-    OpenCVRenderer,
+    CompositionRendererAdapters,
 ]:
     """
     Create and validate infrastructure adapters.
@@ -178,7 +178,7 @@ def create_infrastructure_adapters() -> tuple[
 
     # Rendering
     try:
-        renderer = OpenCVRenderer(
+        renderer = CompositionRendererAdapter(
             canvas_width=cfg.canvas_width,
             canvas_height=cfg.canvas_height,
             max_word_font_size=cfg.max_word_font_size,

@@ -149,7 +149,11 @@ class Keyword(BaseModel):
         variants = [self.text]
 
         # Add plural/singular variants using simple heuristics
-        if self.text.endswith("s") and not self.text.endswith("ous") and len(self.text) > 3:
+        if (
+            self.text.endswith("s")
+            and not self.text.endswith("ous")
+            and len(self.text) > 3
+        ):
             # Try singular
             singular = self.text[:-1]
             if singular not in variants:
