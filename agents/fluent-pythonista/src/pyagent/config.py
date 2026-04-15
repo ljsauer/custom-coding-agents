@@ -19,6 +19,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_prefix="PYAGENT_",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # Anthropic API key is read WITHOUT the PYAGENT_ prefix so the same

@@ -24,8 +24,14 @@ cp .env.example .env
 uv run pyagent --help
 uv run pyagent refactor path/to/project/          # full two-phase codebase refactor
 uv run pyagent refactor path/to/file.py           # single-file refactor
+uv run pyagent review path/to/file.py             # opinionated code review
+uv run pyagent chat --path path/to/project/       # interactive chat about a codebase
 
-uv run archagent                                  # interactive architecture advisor
+uv run archagent --help
+uv run archagent chat                             # interactive architecture advisor
+uv run archagent chat -p my-service               # scope decisions to a named project
+uv run archagent list-sessions                    # prior sessions
+uv run archagent info                             # resolved config + KB stats
 ```
 
 ## Running tests
@@ -42,7 +48,7 @@ custom-coding-agents/
 ├── pyproject.toml              # workspace root
 ├── uv.lock                     # single lock for the whole workspace
 ├── agents/
-│   ├── pythonista-agent/       # pyagent package
+│   ├── fluent-pythonista/      # pyagent package
 │   │   ├── pyproject.toml
 │   │   ├── src/pyagent/
 │   │   ├── test_core.py
@@ -50,7 +56,8 @@ custom-coding-agents/
 │   └── software-architect/     # archagent package
 │       ├── pyproject.toml
 │       ├── src/archagent/
-│       └── test_archagent.py
+│       ├── test_archagent.py
+│       └── README.md
 ├── docs/
 │   ├── architecture/           # consumed by archagent's RAG index
 │   └── python/                 # consumed by pyagent's RAG index
@@ -61,8 +68,19 @@ Each agent can also be used standalone from its own directory (`cd agents/fluent
 
 ## Configuration
 
-Both agents read `ANTHROPIC_API_KEY` from the environment or a local `.env` file. archagent additionally reads an optional `AGENT_WORKSPACE` variable — set it to a directory path to enable archagent's `write_file` / `edit_file` tools, scoped to that directory. Without it, those tools refuse to run.
+Both agents read `ANTHROPIC_API_KEY` from the environment or a local `.env` file at the workspace root.
+
+Agent-specific env vars:
+
+| Env var | Agent | Purpose |
+|---------|-------|---------|
+| `ANTHROPIC_API_KEY` | both | Required. API key for Claude. |
+| `AGENT_WORKSPACE` | archagent | Optional. Directory the agent is allowed to write into — gates the `write_file` / `edit_file` tools. Off by default. |
+| `HF_TOKEN` | archagent | Optional. Hugging Face token used when downloading the sentence-transformer embedding model for RAG. |
+| `PYAGENT_*` | pyagent | Override `model`, `max_tokens`, `batch_max_tokens`, `context_token_budget`, `log_level`, `docs_path`. |
+| `ARCHAGENT_*` | archagent | Override `model`, `max_tokens`, `log_level`, `docs_path`. |
 
 See each agent's own README for command-level detail:
 
 - [pyagent README](agents/fluent-pythonista/README.md)
+- [archagent README](agents/software-architect/README.md)

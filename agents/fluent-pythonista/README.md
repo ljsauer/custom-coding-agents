@@ -1,6 +1,6 @@
-# PyAgent
+# pyagent
 
-An opinionated Python code review, refactoring, and explanation agent powered by Claude.
+An opinionated Python code review, refactoring, and explanation agent powered by Claude. Part of the [custom-coding-agents](../../README.md) workspace — see the workspace README for the shared install flow.
 
 ## Quickstart
 
@@ -8,11 +8,10 @@ An opinionated Python code review, refactoring, and explanation agent powered by
 # Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone and install
-cd pyagent
-uv sync
+# From the workspace root — one lockfile resolves both agents into a single venv.
+uv sync --extra dev
 
-# Set your API key
+# Set your API key (the workspace .env at the repo root is read automatically).
 cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 
@@ -45,7 +44,7 @@ uv run pyagent chat --path path/to/project/
 | `chat` | Interactive conversation about a codebase |
 | `info` | Show configuration and knowledge base stats |
 
-All commands accept `--instructions` / `-i` (or `--question` / `-q` for explain) for additional guidance, and `--model` / `-m` to override the default model.  `review`, `refactor`, and `explain` all auto-detect file vs directory paths — no mode flag required.
+All commands accept `--instructions` / `-i` (or `--question` / `-q` for explain) for additional guidance, and `--model` / `-m` to override the default model.  `review`, `refactor`, and `explain` all auto-detect file vs directory paths — no mode flag required. `pyagent --version` prints the installed version and exits.
 
 ### Refactor modes
 
@@ -96,12 +95,14 @@ uv run pyagent refactor ./my_project --dry-run
 src/pyagent/
 ├── __main__.py     # CLI entrypoint (typer + rich)
 ├── agent.py        # Core orchestration loop
-├── config.py       # Pydantic settings
+├── config.py       # Pydantic settings (PYAGENT_* env vars)
 ├── context.py      # Codebase ingestion, AST parsing & file batching
 ├── logging.py      # Structured logger factory
 ├── memory.py       # Conversation state management
+├── plan_model.py   # RefactorPlan / FileChange schemas
 ├── prompts.py      # Prompt templates per capability
 ├── rag.py          # Documentation retrieval
+├── writer.py       # Diff rendering, backups, and on-disk writes
 └── tools/
     ├── base.py       # Tool protocol
     ├── reviewer.py   # Code review tool
@@ -109,9 +110,23 @@ src/pyagent/
     └── explainer.py  # Explanation tool
 ```
 
+## Configuration
+
+All settings are read from environment variables (optionally via a `.env` file at the workspace root) and resolved by [`pyagent.config.Settings`](src/pyagent/config.py).
+
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `ANTHROPIC_API_KEY` | _required_ | API key for Claude access |
+| `PYAGENT_MODEL` | `claude-sonnet-4-20250514` | Model ID to use |
+| `PYAGENT_MAX_TOKENS` | `8000` | Upper bound on per-turn model output |
+| `PYAGENT_BATCH_MAX_TOKENS` | `20000` | Per-batch token budget during two-phase codebase refactors |
+| `PYAGENT_CONTEXT_TOKEN_BUDGET` | `30000` | Budget for single-pass context-packed refactors |
+| `PYAGENT_LOG_LEVEL` | `INFO` | Log level |
+| `PYAGENT_DOCS_PATH` | `<repo>/docs/python` | Directory of `.md` files indexed for RAG |
+
 ## Knowledge Base
 
-The agent's opinions are codified in six documents under `docs/`:
+The agent's opinions are codified in six documents under [`docs/python/`](../../docs/python/):
 
 | Document | Purpose |
 |----------|---------|
@@ -122,18 +137,22 @@ The agent's opinions are codified in six documents under `docs/`:
 | `architecture_patterns.md` | Module design, DI, and structural best practices |
 | `review_rubric.md` | Severity levels, scoring dimensions, output format |
 
-These docs are retrieved via RAG at runtime, meaning you can edit them to tune the agent's behavior without touching code.
+These docs are retrieved via RAG at runtime, so you can edit them to tune the agent's behavior without touching code.
 
 ## Development
 
 ```bash
-# Install with dev dependencies
-uv sync --all-extras
+# Install with dev dependencies (from the workspace root or from this package).
+uv sync --extra dev
 
-# Run tests
-uv run pytest
+# Run this package's tests.
+uv run pytest agents/fluent-pythonista/test_core.py -v
 
-# Lint and format
-uv run ruff check .
-uv run ruff format .
+# Lint and format.
+uv run ruff check agents/fluent-pythonista/
+uv run ruff format agents/fluent-pythonista/
 ```
+
+## Related
+
+- [archagent](../software-architect/) — the architecture-advisor companion that lives in the same workspace.
