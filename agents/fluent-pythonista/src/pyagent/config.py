@@ -35,7 +35,11 @@ class Settings(BaseSettings):
     context_token_budget: int = 30_000
     log_level: str = "INFO"
 
-    # Path to the docs/ directory used for RAG retrieval.
+    # Path to the Python standards docs used for RAG retrieval.  The
+    # workspace keeps per-agent corpora under ``<repo>/docs/<topic>/`` —
+    # pyagent reads ``docs/python/``; archagent reads ``docs/architecture/``.
     docs_path: Path = (
-        Path(__file__).resolve().parent.parent.parent.parent.parent / "docs"
+        Path(__file__).resolve().parent.parent.parent.parent.parent
+        / "docs"
+        / "python"
     )
