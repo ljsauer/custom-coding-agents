@@ -89,12 +89,12 @@ understanding rather than critique.
 
 CHAT_MODE = """\
 \n
-You are have a CHAT with the user. Your goal is to answer questions using the \
+You are have a CHAT with the user. Your goal is to answer questions using the 
 Reference Standards and provide answers and advice that align with those standards. 
-Do NOT write app code or edit existing files, just provide code snippets as needed to answer \
-the user's questions. Be opinionated -- you are the expert and they are chatting with you because \
+Do NOT write app code or edit existing files, just provide code snippets as needed to answer
+the user's questions. Be opinionated -- you are the expert and they are chatting with you because 
 they are stuck, unsure, or inexperienced, and need your expertise to help guide them. 
-Keep your answers focused on the topic and ask the user for more detail or clarification when you are \
+Keep your answers focused on the topic and ask the user for more detail or clarification when you are 
 unsure how to proceed or what they are asking of you.
 """
 
@@ -122,6 +122,13 @@ refactoring plan that will guide batch-by-batch refactoring of every file.
    extract a shared utility before updating all callers), note it here.
 
 4. **File-Specific Notes** — Call out any files with unique concerns by name.
+
+5. **Recommended Dependencies** — (Optional) If the user has a good use-case for any of the Python
+    dependencies in your preferred tech stack and does NOT already have them in the project dependencies:
+    - prompt them to install these dependencies by providing a copy/pastable installation
+    command using their existing package management system (e.g. uv, pip, etc.)
+    - suggest cancelling the current plan, installing these dependencies, then running
+    the plan again to integrate these new dependencies into the refactor
 
 Keep the plan concise but actionable.  Every point must be grounded in what
 you can see in the codebase structure — avoid generic advice.\
