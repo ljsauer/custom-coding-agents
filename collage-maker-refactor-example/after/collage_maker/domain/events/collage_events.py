@@ -9,7 +9,7 @@ These are Pydantic models with validation and serialization support.
 If an event bus or async queue is introduced, these models can be easily
 serialized to JSON or other formats for inter-service communication.
 
-All events inherit from DomainEvent for consistent timestamping and behavior.
+All events inherit from DomainEvent for consistent timestambing and behavior.
 """
 
 from __future__ import annotations
@@ -61,6 +61,9 @@ class CollageCreated(DomainEvent):
     )
     source_text_length: int = Field(
         default=0, description="Length of source text in characters", ge=0
+    )
+    quality_score: float = Field(
+        default=0.0, description="Overall quality score of the collage", ge=0.0, le=1.0
     )
 
 
@@ -141,6 +144,50 @@ class CollageProcessingFailed(DomainEvent):
         default="unknown",
         description="Stage where processing failed (extraction, fetching, composition, storage)",
     )
+    source_name: str | None = Field(
+        default=None, description="Image source that failed"
+    )
+    retry_count: int = Field(
+        default=0, description="Number of retries attempted", ge=0
+    )
+
+
+class ImageSourceError(DomainEvent):
+    """
+    Event raised when image source encounters errors.
+
+    This provides detailed tracking of image source failures to help
+    diagnose and monitor external service issues.
+    """
+
+    source_name: str = Field(..., description="Name of the image source that failed")
+    keyword_text: str = Field(..., description="Keyword being searched when error occurred")
+    error_type: str = Field(..., description="Type of error (network, rate_limit, parsing)")
+    error_message: str = Field(..., description="Detailed error message")
+    http_status: int | None = Field(
+        default=None, description="HTTP status code if applicable"
+    )
+    retry_after: int | None = Field(
+        default=None, description="Seconds to wait before retry if provided"
+    )
+    images_fetched_before_error: int = Field(
+        default=0, description="Images successfully fetched before error", ge=0
+    )
+
+
+class ImageQualityFiltered(DomainEvent):
+    """
+    Event raised when images are filtered due to quality issues.
+
+    Helps track image quality patterns and tune filtering parameters.
+    """
+
+    keyword_text: str = Field(..., description="Keyword the images were for")
+    images_filtered: int = Field(..., description="Number of images filtered out", ge=0)
+    filter_reasons: list[str] = Field(
+        ..., description="Reasons images were filtered (blur, size, format, etc.)"
+    )
+    source_name: str = Field(..., description="Image source name")
 
 
 class CollageImageUpdated(DomainEvent):

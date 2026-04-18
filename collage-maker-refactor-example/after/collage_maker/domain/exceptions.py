@@ -118,6 +118,67 @@ class ImageSourceError(DomainError):
         self.source_name = source_name
 
 
+class NetworkError(DomainError):
+    """
+    Raised when network operations fail during image fetching.
+
+    This is a specific type of ImageSourceError that indicates
+    connectivity issues, timeouts, or HTTP-level failures.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        source_url: str | None = None,
+        status_code: int | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        super().__init__(message, error_code="network_error")
+        self.source_url = source_url
+        self.status_code = status_code
+        self.retry_after = retry_after
+
+
+class RateLimitError(DomainError):
+    """
+    Raised when rate limits are exceeded for external services.
+
+    This helps the application handle API rate limiting gracefully
+    and provide appropriate user feedback about temporary restrictions.
+    """
+
+    def __init__(self, service_name: str, reset_time: int | None = None) -> None:
+        message = f"Rate limit exceeded for {service_name}"
+        if reset_time:
+            message += f". Try again in {reset_time} seconds"
+        super().__init__(message, error_code="rate_limit_exceeded")
+        self.service_name = service_name
+        self.reset_time = reset_time
+
+
+class ImageQualityError(DomainError):
+    """
+    Raised when images fail to meet quality standards.
+
+    This occurs when:
+    - Images are too small or too blurry
+    - Images cannot be decoded or processed
+    - Images fail subject isolation
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        image_url: str | None = None,
+        quality_score: float | None = None,
+    ) -> None:
+        super().__init__(message, error_code="image_quality_error")
+        self.image_url = image_url
+        self.quality_score = quality_score
+
+
 class CompositionError(DomainError):
     """
     Raised when collage composition fails.
@@ -153,18 +214,16 @@ class StorageError(DomainError):
         self.path = path
 
 
-class RateLimitError(DomainError):
+class ConfigurationError(DomainError):
     """
-    Raised when rate limits are exceeded for external services.
+    Raised when system configuration is invalid or incomplete.
 
-    This helps the application handle API rate limiting gracefully
-    and provide appropriate user feedback about temporary restrictions.
+    This occurs during startup when:
+    - Required API keys are missing
+    - File system permissions are inadequate
+    - External services are misconfigured
     """
 
-    def __init__(self, service_name: str, reset_time: int | None = None) -> None:
-        message = f"Rate limit exceeded for {service_name}"
-        if reset_time:
-            message += f". Try again in {reset_time} seconds"
-        super().__init__(message, error_code="rate_limit_exceeded")
-        self.service_name = service_name
-        self.reset_time = reset_time
+    def __init__(self, message: str, *, config_key: str | None = None) -> None:
+        super().__init__(message, error_code="configuration_error")
+        self.config_key = config_key

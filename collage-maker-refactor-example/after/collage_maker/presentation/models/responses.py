@@ -34,7 +34,7 @@ class CollageResponse(BaseModel):
     created_at: dt = Field(..., description="When the collage was created (UTC)")
     updated_at: dt = Field(..., description="When the collage was last modified (UTC)")
 
-    # Optional metadata fields
+    # Enhanced metadata fields
     image_count: int = Field(
         default=0, description="Number of images used in the collage", ge=0
     )
@@ -46,6 +46,9 @@ class CollageResponse(BaseModel):
         description="Quality score of the collage (0.0-1.0)",
         ge=0.0,
         le=1.0,
+    )
+    source_text_length: int = Field(
+        default=0, description="Length of original source text", ge=0
     )
 
     model_config = {
@@ -61,6 +64,7 @@ class CollageResponse(BaseModel):
                 "image_count": 15,
                 "processing_time_seconds": 45.2,
                 "quality_score": 0.85,
+                "source_text_length": 2341,
             }
         },
     }
@@ -88,6 +92,14 @@ class CollageListResponse(BaseModel):
         default=False, description="Whether there are more pages available"
     )
 
+    # Collection statistics
+    average_quality_score: float = Field(
+        default=0.0, description="Average quality score of all collages", ge=0.0, le=1.0
+    )
+    total_images_processed: int = Field(
+        default=0, description="Total images across all collages", ge=0
+    )
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -99,12 +111,15 @@ class CollageListResponse(BaseModel):
                         "image_url": "/static/collages/123e4567-e89b-12d3-a456-426614174000.jpg",
                         "created_at": "2024-01-15T10:30:00Z",
                         "updated_at": "2024-01-15T10:30:00Z",
+                        "quality_score": 0.85,
                     }
                 ],
                 "total": 1,
                 "page": 1,
                 "page_size": 50,
                 "has_more": False,
+                "average_quality_score": 0.85,
+                "total_images_processed": 15,
             }
         }
     }
@@ -136,6 +151,11 @@ class MessageResponse(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {"message": "Collage created successfully", "success": True},
+                {
+                    "message": "Image source temporarily unavailable. Retrying with fallback.",
+                    "success": True,
+                    "details": {"source": "google_images", "retry_count": "2"}
+                },
                 {
                     "message": "Collage not found",
                     "success": False,
