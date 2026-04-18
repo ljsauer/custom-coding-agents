@@ -72,14 +72,18 @@ class CompositionService:
         logger.info(
             f"Starting composition with {len(subjects)} subjects and {len(keywords)} keywords"
         )
-        
+
         background = self._blank_canvas()
         placed, rectangles = self._place_subjects(subjects, background)
 
-        logger.info(f"Successfully placed {len(placed)} out of {len(subjects)} subjects")
-        
+        logger.info(
+            f"Successfully placed {len(placed)} out of {len(subjects)} subjects"
+        )
+
         if not placed:
-            logger.warning("No subjects could be placed on canvas - creating wordcloud-only collage")
+            logger.warning(
+                "No subjects could be placed on canvas - creating wordcloud-only collage"
+            )
 
         # First pass: draw subjects to create the mask that shapes the wordcloud
         mask_canvas = background.copy()
@@ -120,10 +124,12 @@ class CompositionService:
                 logger.warning(f"Subject {i} is empty or invalid - skipping")
                 discarded_count += 1
                 continue
-                
+
             h, w = subject.shape[:2]
             if w > W or h > H:
-                logger.warning(f"Subject {i} ({w}x{h}) larger than canvas ({W}x{H}) - discarding")
+                logger.warning(
+                    f"Subject {i} ({w}x{h}) larger than canvas ({W}x{H}) - discarding"
+                )
                 discarded_count += 1
                 continue
 
@@ -135,7 +141,9 @@ class CompositionService:
                 rect.move_to(randint(0, W - w), randint(0, H - h))
                 attempts += 1
                 if attempts > _PLACEMENT_ATTEMPT_CAP:
-                    logger.warning(f"Subject {i} could not be placed after {_PLACEMENT_ATTEMPT_CAP} attempts")
+                    logger.warning(
+                        f"Subject {i} could not be placed after {_PLACEMENT_ATTEMPT_CAP} attempts"
+                    )
                     rect = None
                     discarded_count += 1
                     break
@@ -143,11 +151,13 @@ class CompositionService:
             if rect is not None:
                 placed.append(subject)
                 rectangles.append(rect)
-                logger.debug(f"Placed subject {i} at {rect.x1},{rect.y1} after {attempts} attempts")
+                logger.debug(
+                    f"Placed subject {i} at {rect.x1},{rect.y1} after {attempts} attempts"
+                )
 
         if discarded_count > 0:
             logger.info(f"Discarded {discarded_count} subjects during placement")
-            
+
         return placed, rectangles
 
     @staticmethod
@@ -164,17 +174,19 @@ class CompositionService:
         for i, (rect, subject) in enumerate(zip(rectangles, subjects)):
             try:
                 x1, y1, x2, y2 = rect.x1, rect.y1, rect.x2, rect.y2
-                
+
                 # Validate bounds
                 bg_h, bg_w = background.shape[:2]
                 if x1 < 0 or y1 < 0 or x2 > bg_w or y2 > bg_h:
-                    logger.warning(f"Subject {i} bounds ({x1},{y1},{x2},{y2}) exceed background ({bg_w},{bg_h})")
+                    logger.warning(
+                        f"Subject {i} bounds ({x1},{y1},{x2},{y2}) exceed background ({bg_w},{bg_h})"
+                    )
                     continue
-                    
+
                 # Validate subject dimensions match expected region
                 expected_h, expected_w = y2 - y1, x2 - x1
                 subject_h, subject_w = subject.shape[:2]
-                
+
                 if subject_h != expected_h or subject_w != expected_w:
                     logger.warning(
                         f"Subject {i} dimensions ({subject_w}x{subject_h}) don't match expected ({expected_w}x{expected_h})"
@@ -185,17 +197,17 @@ class CompositionService:
                 if subject.shape[2] < 4:
                     logger.warning(f"Subject {i} missing alpha channel - skipping")
                     continue
-                    
+
                 alpha_s = subject[:, :, 3] / 255.0
                 alpha_l = 1.0 - alpha_s
-                
+
                 # Alpha blend each color channel
                 for c in range(3):
                     background[y1:y2, x1:x2, c] = (
                         alpha_s * subject[:, :, c]
                         + alpha_l * background[y1:y2, x1:x2, c]
                     ).astype(background.dtype)
-                    
+
             except (ValueError, IndexError) as e:
                 # Mismatched shapes can occur when subjects are near the edge;
                 # skip rather than crash.
@@ -214,15 +226,15 @@ class CompositionService:
         if not keywords:
             logger.warning("No keywords provided for wordcloud")
             return self._blank_canvas()
-            
+
         try:
             colormap = choice(self._colormaps) if self._colormaps else "viridis"
             word_string = " ".join(kw.text for kw in keywords)
-            
+
             if not word_string.strip():
                 logger.warning("Empty keyword string - cannot generate wordcloud")
                 return self._blank_canvas()
-                
+
             # Create wordcloud mask from subjects (convert RGBA to grayscale)
             if mask.shape[2] == 4:
                 # Use alpha channel as mask
@@ -230,15 +242,15 @@ class CompositionService:
             else:
                 # Convert to grayscale
                 wc_mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-                
+
             # Invert mask so subjects appear as holes
             wc_mask = 255 - wc_mask
-            
+
             # Ensure mask has some free space
             if np.sum(wc_mask > 0) < 1000:  # Less than 1000 white pixels
                 logger.warning("Mask too restrictive - using no mask")
                 wc_mask = None
-                
+
             wc = WordCloud(
                 width=self._canvas.width,
                 height=self._canvas.height,
@@ -255,39 +267,39 @@ class CompositionService:
                 relative_scaling=0.5,
                 max_words=100,
             ).generate(word_string)
-            
+
             # Convert RGB to BGR for OpenCV
             wordcloud_array = cv2.cvtColor(np.array(wc), cv2.COLOR_RGB2BGR)
-            
+
             # Add alpha channel
             h, w = wordcloud_array.shape[:2]
             alpha = np.ones((h, w, 1), dtype=np.uint8) * 255
             return np.concatenate([wordcloud_array, alpha], axis=2)
-            
+
         except Exception as e:
             logger.error(f"WordCloud generation failed: {e}")
             # Return a solid color background as fallback
             return self._create_fallback_background()
-            
+
     def _create_fallback_background(self) -> np.ndarray:
         """Create a simple gradient background when wordcloud fails."""
         h, w = self._canvas.height, self._canvas.width
-        
+
         # Create a simple vertical gradient
         background = np.zeros((h, w, 4), dtype=np.uint8)
-        
+
         # Random color scheme
         color1 = [randint(100, 200), randint(100, 200), randint(100, 200)]
         color2 = [randint(50, 150), randint(50, 150), randint(50, 150)]
-        
+
         for y in range(h):
             blend_factor = y / h
             for c in range(3):
                 background[y, :, c] = int(
                     color1[c] * (1 - blend_factor) + color2[c] * blend_factor
                 )
-                
+
         # Full opacity
         background[:, :, 3] = 255
-        
+
         return background

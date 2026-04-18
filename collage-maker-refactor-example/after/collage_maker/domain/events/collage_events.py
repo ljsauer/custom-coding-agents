@@ -147,9 +147,7 @@ class CollageProcessingFailed(DomainEvent):
     source_name: str | None = Field(
         default=None, description="Image source that failed"
     )
-    retry_count: int = Field(
-        default=0, description="Number of retries attempted", ge=0
-    )
+    retry_count: int = Field(default=0, description="Number of retries attempted", ge=0)
 
 
 class ImageSourceError(DomainEvent):
@@ -161,8 +159,12 @@ class ImageSourceError(DomainEvent):
     """
 
     source_name: str = Field(..., description="Name of the image source that failed")
-    keyword_text: str = Field(..., description="Keyword being searched when error occurred")
-    error_type: str = Field(..., description="Type of error (network, rate_limit, parsing)")
+    keyword_text: str = Field(
+        ..., description="Keyword being searched when error occurred"
+    )
+    error_type: str = Field(
+        ..., description="Type of error (network, rate_limit, parsing)"
+    )
     error_message: str = Field(..., description="Detailed error message")
     http_status: int | None = Field(
         default=None, description="HTTP status code if applicable"

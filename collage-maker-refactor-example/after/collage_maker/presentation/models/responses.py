@@ -154,7 +154,7 @@ class MessageResponse(BaseModel):
                 {
                     "message": "Image source temporarily unavailable. Retrying with fallback.",
                     "success": True,
-                    "details": {"source": "google_images", "retry_count": "2"}
+                    "details": {"source": "google_images", "retry_count": "2"},
                 },
                 {
                     "message": "Collage not found",
