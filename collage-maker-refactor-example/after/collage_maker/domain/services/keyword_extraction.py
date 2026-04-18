@@ -145,7 +145,8 @@ class KeywordExtractor:
 
             # Filter and rank by composite score
             high_quality_keywords = [
-                kw for kw in keyword_candidates 
+                kw
+                for kw in keyword_candidates
                 if kw.is_high_quality() and kw.confidence >= self._quality_threshold
             ]
 
@@ -157,13 +158,13 @@ class KeywordExtractor:
             )
 
             logger.info(f"Found {len(ranked_keywords)} high-quality keywords")
-            
+
             if ranked_keywords:
                 top_5 = [f"{kw.text}({kw.frequency})" for kw in ranked_keywords[:5]]
                 logger.info(f"Top 5 keywords: {top_5}")
 
             return ranked_keywords[: self._n_keywords]
-            
+
         except Exception as e:
             logger.error(f"Keyword extraction failed: {e}")
             return []
@@ -222,7 +223,7 @@ class KeywordExtractor:
 
             logger.debug(f"Filtered tokens: {len(filtered_tokens)}")
             return filtered_tokens
-            
+
         except Exception as e:
             logger.error(f"Text preprocessing failed: {e}")
             return []
@@ -244,7 +245,7 @@ class KeywordExtractor:
             filtered_words = [w for w in words if len(w) <= 50]
 
             return " ".join(filtered_words)
-            
+
         except Exception as e:
             logger.warning(f"Text cleaning failed, using original: {e}")
             return text
@@ -293,7 +294,7 @@ class KeywordExtractor:
                 return False
 
             return True
-            
+
         except Exception:
             return False
 
@@ -304,11 +305,32 @@ class KeywordExtractor:
         except Exception as e:
             logger.warning(f"Failed to load NLTK stopwords, using minimal set: {e}")
             base_stopwords = {
-                "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-                "has", "he", "in", "is", "it", "its", "of", "on", "that", "the",
-                "to", "was", "will", "with"
+                "a",
+                "an",
+                "and",
+                "are",
+                "as",
+                "at",
+                "be",
+                "by",
+                "for",
+                "from",
+                "has",
+                "he",
+                "in",
+                "is",
+                "it",
+                "its",
+                "of",
+                "on",
+                "that",
+                "the",
+                "to",
+                "was",
+                "will",
+                "with",
             }
-            
+
         punctuation_set = set(punctuation)
         extra_stopwords = set(self._extra_stopwords)
 
@@ -328,7 +350,9 @@ class KeywordExtractor:
                     confidence = self._calculate_confidence_score(
                         word, frequency, freq_dist
                     )
-                    keyword = Keyword(text=word, frequency=frequency, confidence=confidence)
+                    keyword = Keyword(
+                        text=word, frequency=frequency, confidence=confidence
+                    )
                     candidates.append(keyword)
                 except Exception as e:
                     logger.debug(f"Failed to score candidate '{word}': {e}")
@@ -372,7 +396,7 @@ class KeywordExtractor:
             )
 
             return min(1.0, max(0.0, confidence))
-            
+
         except Exception as e:
             logger.debug(f"Confidence scoring failed for '{word}': {e}")
             return 0.5  # Default moderate confidence

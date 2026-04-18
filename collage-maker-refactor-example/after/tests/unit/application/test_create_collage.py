@@ -7,11 +7,11 @@
 # without testing any infrastructure implementation detail.
 
 import pytest
-
 from collage_maker.application.use_cases.create_collage import CreateCollageUseCase
 from collage_maker.domain.model.canvas import Canvas
 from collage_maker.domain.services.composition import CompositionService
 from collage_maker.domain.services.keyword_extraction import KeywordExtractor
+
 from tests.fakes.fake_collage_repository import FakeCollageRepository
 from tests.fakes.fake_collage_storage import FakeCollageStorage
 from tests.fakes.fake_image_source import FakeReferenceImageSource

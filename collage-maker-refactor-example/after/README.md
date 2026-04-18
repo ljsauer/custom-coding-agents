@@ -219,7 +219,9 @@ pip install -r requirements.txt
 ```python
 import nltk
 nltk.download('punkt')
+nltk.download('punkt_tab')
 nltk.download('stopwords')
+nltk.download('wordnet')
 ```
 
 ### Run the application

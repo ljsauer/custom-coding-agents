@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import struct
 import zlib
-from typing import Dict, List
+from typing import TYPE_CHECKING
 
-from collage_maker.domain.model.keyword import Keyword
 from collage_maker.domain.ports.reference_image_source import IReferenceImageSource
+
+if TYPE_CHECKING:
+    from collage_maker.domain.model.keyword import Keyword
 
 
 def _minimal_jpeg() -> bytes:
@@ -61,13 +63,13 @@ class FakeReferenceImageSource(IReferenceImageSource):
     def __init__(
         self,
         images_per_keyword: int = 1,
-        keyword_overrides: Dict[str, List[bytes]] | None = None,
+        keyword_overrides: dict[str, list[bytes]] | None = None,
     ) -> None:
         self._images_per_keyword = images_per_keyword
-        self._overrides: Dict[str, List[bytes]] = keyword_overrides or {}
-        self.calls: List[str] = []  # record of keywords requested
+        self._overrides: dict[str, list[bytes]] = keyword_overrides or {}
+        self.calls: list[str] = []  # record of keywords requested
 
-    def fetch_for_keyword(self, keyword: Keyword) -> List[bytes]:
+    def fetch_for_keyword(self, keyword: Keyword) -> list[bytes]:
         self.calls.append(keyword.text)
         if keyword.text in self._overrides:
             return self._overrides[keyword.text]

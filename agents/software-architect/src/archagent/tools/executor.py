@@ -1,82 +1,56 @@
-from pathlib import Path
+"""Dispatcher for Anthropic tool-use calls emitted by archagent."""
+
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
-def _check_write_allowed(path: str) -> str | None:
+def _resolve_workspace(workspace: Path | None) -> Path | None:
+    """Resolve the write-allowed workspace.
+
+    Prefers the explicit argument (typically passed from ``Settings``),
+    falling back to the ``AGENT_WORKSPACE`` env var so callers that don't
+    have a Settings instance still work.
+    """
+    if workspace is not None:
+        return workspace
+    env_value = os.environ.get("AGENT_WORKSPACE")
+    return Path(env_value) if env_value else None
+
+
+def _check_write_allowed(path: str, workspace: Path | None) -> str | None:
     """Returns an error string if the write should be blocked, None if safe."""
-    load_dotenv(override=True)
-    allowed_write_root = os.environ.get("AGENT_WORKSPACE", None)
-    if allowed_write_root is None:
+    resolved_workspace = _resolve_workspace(workspace)
+    if resolved_workspace is None:
         return "Write tools are disabled. Set AGENT_WORKSPACE in .env to enable."
     resolved = Path(path).resolve()
-    workspace = Path(allowed_write_root).resolve()
-    if not str(resolved).startswith(str(workspace)):
-        return f"Write blocked: {resolved} is outside workspace {workspace}."
+    ws = resolved_workspace.resolve()
+    if not str(resolved).startswith(str(ws)):
+        return f"Write blocked: {resolved} is outside workspace {ws}."
     return None
 
 
-TOOL_DEFINITIONS = [
-    {
-        "name": "read_file",
-        "description": "Read the contents of a source file for architectural review.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Path to the file."}
-            },
-            "required": ["path"],
-        },
-    },
-    {
-        "name": "describe_project_structure",
-        "description": (
-            "List the directory tree of a project to understand its layer "
-            "structure before reading individual files."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "root": {"type": "string"},
-                "max_depth": {"type": "integer", "default": 4},
-            },
-            "required": ["root"],
-        },
-    },
-    {
-        "name": "write_file",
-        "description": (
-            "Write content to a file. Only available within the configured workspace. "
-            "Use for creating new files or replacing file contents entirely."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
-            "required": ["path", "content"],
-        },
-    },
-    {
-        "name": "edit_file",
-        "description": (
-            "Replace a specific string in a file with new content. "
-            "old_str must match exactly and appear exactly once."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string"},
-                "old_str": {"type": "string"},
-                "new_str": {"type": "string"},
-            },
-            "required": ["path", "old_str", "new_str"],
-        },
-    },
-]
+def execute_tool(
+    tool_name: str,
+    tool_input: dict,
+    *,
+    workspace: Path | None = None,
+) -> str:
+    """Dispatch a single Anthropic tool-use call.
 
+    Args:
+        tool_name: Name of the tool the model invoked.
+        tool_input: Parsed JSON input for the tool call.
+        workspace: Optional write-allowed workspace.  When ``None``,
+            falls back to the ``AGENT_WORKSPACE`` env var.
 
-def execute_tool(tool_name: str, tool_input: dict) -> str:
+    Returns:
+        The tool's result text, suitable for returning to the model as a
+        ``tool_result`` content block.
+    """
     if tool_name == "read_file":
         try:
             return Path(tool_input["path"]).read_text()
@@ -87,7 +61,7 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
         return _describe_structure(tool_input["root"], tool_input.get("max_depth", 4))
 
     if tool_name in ("write_file", "edit_file"):
-        error = _check_write_allowed(tool_input["path"])
+        error = _check_write_allowed(tool_input["path"], workspace)
         if error:
             return error
         print(f"\n[AGENT WANTS TO WRITE] {tool_input['path']}")
@@ -117,8 +91,6 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
                 return f"Error: old_str appears more than once in {target}"
             target.write_text(original.replace(old_str, new_str, 1))
             return f"Edited: {target}"
-
-    return f"Unknown tool: {tool_name}"
 
     return f"Unknown tool: {tool_name}"
 

@@ -17,6 +17,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from collage_maker.infrastructure.persistence.database import Base
 
+__all__ = ["CollageRow"]
+
 
 def utc_now() -> datetime:
     """Generate current UTC datetime for default values."""
@@ -30,6 +32,13 @@ class CollageRow(Base):
     Keywords are stored as a comma-separated string. This is a deliberate
     simplification — for a production system consider a separate keywords
     table or a JSON column.
+
+    Attributes:
+        id: Primary key - unique identifier for the collage
+        name: Human-readable name for the collage
+        keywords_csv: Comma-separated list of keywords
+        created_at: Timestamp when the collage was first created
+        updated_at: Timestamp when the collage was last modified
     """
 
     __tablename__ = "collages"
@@ -38,9 +47,7 @@ class CollageRow(Base):
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     keywords_csv: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        nullable=False,
-        default=utc_now
+        DateTime(timezone=True), nullable=False, default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -1,45 +1,52 @@
-from pathlib import Path
+"""Core archagent orchestration.
+
+Wires together the Anthropic client, the architecture knowledge base,
+the session memory, and the tool dispatcher into a conversational agent.
+"""
 
 from anthropic import Anthropic
-from dotenv import load_dotenv
 
-from prompts import SYSTEM_PROMPT
-from rag import build_index, retrieve, build_context_block
-from memory import (
-    new_session,
-    save_session,
+from archagent.config import Settings
+from archagent.logging import get_logger
+from archagent.memory import (
+    build_decision_block,
+    get_project_decisions,
     load_session,
     log_decision,
-    get_project_decisions,
-    build_decision_block,
+    new_session,
+    save_session,
 )
-from tools import TOOL_DEFINITIONS, execute_tool
+from archagent.prompts import SYSTEM_PROMPT
+from archagent.rag import (
+    ArchitectureKnowledgeBase,
+    load_architecture_knowledge_base,
+)
+from archagent.tools import TOOL_DEFINITIONS, execute_tool
 
-load_dotenv()
+logger = get_logger(__name__)
 
 
 class ArchAgent:
-    def __init__(self, project: str = "default", resume_id: str | None = None):
-        self.client = Anthropic()
+    """The archagent orchestrator."""
 
-        # Load relevant documentation into index
-        doc_files = [
-            "docs/architecture/design_influences.md",
-            "docs/architecture/foundational_patterns.md",
-            "docs/architecture/general_rules.md",
-        ]
-        for f in doc_files:
-            if not Path(f).exists():
-                raise FileNotFoundError(
-                    f"Documentation file not found: {Path(f).resolve()}"
-                )
-
-        self.chunks, self.embeddings = build_index(doc_files)
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        project: str = "default",
+        resume_id: str | None = None,
+    ) -> None:
+        self._settings = settings
+        self.client = Anthropic(api_key=settings.anthropic_api_key)
+        self._kb: ArchitectureKnowledgeBase = load_architecture_knowledge_base(
+            settings.docs_path
+        )
 
         if resume_id:
             self.session = load_session(resume_id)
             print(
-                f"Resumed session {resume_id} ({len(self.session['history']) // 2} prior turns)"
+                f"Resumed session {resume_id} "
+                f"({len(self.session['history']) // 2} prior turns)"
             )
         else:
             self.session = new_session(project)
@@ -47,9 +54,13 @@ class ArchAgent:
 
         self.prior_decisions = get_project_decisions(project)
 
+    @property
+    def knowledge_base(self) -> ArchitectureKnowledgeBase:
+        """The loaded architecture knowledge base."""
+        return self._kb
+
     def _build_system(self, query: str) -> str:
-        relevant = retrieve(query, self.chunks, self.embeddings)
-        context = build_context_block(relevant)
+        context = self._kb.retrieve_formatted(query)
         decisions = build_decision_block(self.prior_decisions)
         return SYSTEM_PROMPT + decisions + context
 
@@ -58,8 +69,8 @@ class ArchAgent:
 
         while True:
             response = self.client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=4096,
+                model=self._settings.model,
+                max_tokens=self._settings.max_tokens,
                 system=self._build_system(user_input),
                 tools=TOOL_DEFINITIONS,
                 messages=self.session["history"],
@@ -80,7 +91,11 @@ class ArchAgent:
             tool_results = []
             for block in serialized_content:
                 if isinstance(block, dict) and block.get("type") == "tool_use":
-                    result = execute_tool(block["name"], block["input"])
+                    result = execute_tool(
+                        block["name"],
+                        block["input"],
+                        workspace=self._settings.workspace,
+                    )
                     tool_results.append(
                         {
                             "type": "tool_result",

@@ -436,9 +436,8 @@ Within each group, imports are sorted alphabetically. Use `ruff` (specifically
   production code.
 - **Create a structured logger** that is reusable across the application:
   ```python
-
-from pyagent import logging
-
+  from pyagent import logging
+  
   def get_logger(name: str) -> logging.Logger:
       logger = logging.getLogger(name)
       if not logger.handlers:
@@ -450,14 +449,10 @@ from pyagent import logging
           logger.addHandler(handler)
           logger.setLevel(logging.DEBUG)
       return logger
-  ```
+    ```
 - **Use appropriate log levels**: `DEBUG` for diagnostic detail, `INFO` for
   operational events, `WARNING` for recoverable issues, `ERROR` for failures,
   `CRITICAL` for fatal conditions.
-- **Use lazy formatting** in log calls:
-  ```python
-  logger.info("Processing user %s with %d items", user_id, item_count)
-  ```
 
 ---
 

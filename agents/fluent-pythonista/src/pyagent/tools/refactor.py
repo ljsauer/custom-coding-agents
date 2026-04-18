@@ -1,6 +1,7 @@
 """Code refactoring tool."""
 
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from anthropic import AsyncAnthropic
@@ -8,6 +9,7 @@ from anthropic import AsyncAnthropic
 from pyagent.config import Settings
 from pyagent.context import CodebaseContext
 from pyagent.logging import get_logger
+from pyagent.plan_model import CodebasePlan, parse_codebase_plan
 from pyagent.prompts import build_refactor_prompt
 from pyagent.rag import KnowledgeBase
 from pyagent.tools.base import ToolResult
@@ -112,12 +114,13 @@ class RefactorTool:
             *,
             user_request: str = "",
             knowledge_base: KnowledgeBase | None = None,
-    ) -> str:
+    ) -> CodebasePlan:
         """Generate an overall refactoring plan from a codebase structural summary.
 
         This is the first phase of codebase-wide refactoring.  The LLM analyses
         the structure of the whole project and returns a strategy that subsequent
-        batch-refactoring passes will follow.
+        batch-refactoring passes will follow.  The LLM's JSON output is parsed
+        into a structured :class:`CodebasePlan`.
 
         Args:
             structural_summary: Output of ``CodebaseContext.summary()``.
@@ -125,7 +128,7 @@ class RefactorTool:
             knowledge_base: Knowledge base for retrieving relevant patterns.
 
         Returns:
-            A text string describing the overall refactoring strategy.
+            A :class:`CodebasePlan` describing the overall refactoring strategy.
         """
         from pyagent.prompts import build_codebase_plan_prompt
 
@@ -156,25 +159,35 @@ class RefactorTool:
             messages=[{"role": "user", "content": user_message}],
         )
 
-        return response.content[0].text
+        raw = response.content[0].text
+        plan = parse_codebase_plan(raw)
+        logger.info(
+            "Parsed codebase plan: %d theme(s), %d file note(s)",
+            len(plan.themes),
+            len(plan.file_notes),
+        )
+        return plan
 
     async def execute_batch(
             self,
             batch_code: str,
             *,
             batch_label: str = "",
-            overall_plan: str = "",
+            overall_plan: CodebasePlan | None = None,
             user_request: str = "",
             knowledge_base: KnowledgeBase | None = None,
+            reminder_prefix: str = "",
     ) -> ToolResult:
         """Refactor a batch of files as part of codebase-wide refactoring.
 
         Args:
             batch_code: Pre-formatted string with ``### FILE:`` sections.
             batch_label: Human-readable label (e.g. ``"1/3"``).
-            overall_plan: The overall refactoring plan from the planning phase.
+            overall_plan: The structured refactoring plan from the planning phase.
             user_request: Specific refactoring instructions.
             knowledge_base: Knowledge base for retrieving relevant patterns.
+            reminder_prefix: Optional prefix prepended to the user message when
+                retrying a batch that failed adherence on the first attempt.
 
         Returns:
             A ``ToolResult`` containing the raw LLM response.
@@ -183,7 +196,10 @@ class RefactorTool:
 
         rag_context = ""
         if knowledge_base:
-            query = f"refactor {user_request or ''} {overall_plan[:200] or ''}".strip()
+            theme_query = (
+                " ".join(overall_plan.theme_names()) if overall_plan else ""
+            )
+            query = f"refactor {user_request or ''} {theme_query}".strip()
             rag_context = knowledge_base.retrieve_formatted(
                 query,
                 sources=self.relevant_sources(),
@@ -197,6 +213,8 @@ class RefactorTool:
             context=rag_context,
             user_request=user_request,
         )
+        if reminder_prefix:
+            user_message = f"{reminder_prefix}\n\n{user_message}"
 
         logger.info(
             "Refactoring batch %s (%d chars)",
@@ -220,6 +238,80 @@ class RefactorTool:
                 "output_tokens": response.usage.output_tokens,
             },
         )
+
+
+@dataclass(frozen=True)
+class BatchAdherenceReport:
+    """Summary of how well a batch's output followed the overall plan.
+
+    Attributes:
+        batch_label: The batch identifier (e.g. ``"1/3"``).
+        themes_referenced: Theme names whose tokens appear in the batch's
+            summary or per-file explanations.
+        themes_missing: Themes from the plan that were NOT referenced.
+        files_changed: Number of files with non-trivial changes in the batch.
+    """
+
+    batch_label: str
+    themes_referenced: list[str] = field(default_factory=list)
+    themes_missing: list[str] = field(default_factory=list)
+    files_changed: int = 0
+
+    @property
+    def followed_plan(self) -> bool:
+        """Return True if at least one plan theme was referenced in the batch."""
+        return bool(self.themes_referenced)
+
+
+def check_batch_adherence(
+    batch_plan: RefactorPlan,
+    overall_plan: CodebasePlan,
+    *,
+    batch_label: str = "",
+) -> BatchAdherenceReport:
+    """Check whether a batch's output references the themes in the plan.
+
+    Uses a case-insensitive substring match on the concatenated batch summary
+    and per-file explanations.  This is a heuristic — it only verifies that
+    the model *mentioned* each theme, not that it applied it correctly — but
+    it is a cheap signal that catches the drift mode where the executor
+    ignores the plan entirely.
+
+    Args:
+        batch_plan: The parsed output of ``parse_refactor_response``.
+        overall_plan: The plan produced by the planning phase.
+        batch_label: Optional identifier for the batch.
+
+    Returns:
+        A :class:`BatchAdherenceReport`.
+    """
+    haystack_parts = [batch_plan.summary or ""]
+    haystack_parts.extend(change.explanation or "" for change in batch_plan.changes)
+    haystack = "\n".join(haystack_parts).lower()
+
+    referenced: list[str] = []
+    missing: list[str] = []
+    for theme in overall_plan.themes:
+        if theme.name.lower() in haystack:
+            referenced.append(theme.name)
+        else:
+            missing.append(theme.name)
+
+    report = BatchAdherenceReport(
+        batch_label=batch_label,
+        themes_referenced=referenced,
+        themes_missing=missing,
+        files_changed=batch_plan.files_changed,
+    )
+
+    if overall_plan.themes and not referenced:
+        logger.warning(
+            "Batch %s referenced NONE of the %d plan theme(s)",
+            batch_label or "?",
+            len(overall_plan.themes),
+        )
+
+    return report
 
 
 def parse_refactor_response(

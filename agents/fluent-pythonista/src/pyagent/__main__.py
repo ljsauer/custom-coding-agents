@@ -6,6 +6,7 @@ plus an interactive chat mode for free-form conversation about a codebase.
 
 import asyncio
 from pathlib import Path
+from typing import Literal
 
 import typer
 from rich.console import Console
@@ -106,17 +107,36 @@ def refactor(
         "--no-backup",
         help="Skip creating backup files before writing.",
     ),
-    all_files: bool = typer.Option(
+    partial: bool = typer.Option(
         False,
-        "--all-files",
+        "--partial",
         help=(
-            "Refactor every file in the codebase using a two-phase "
-            "strategy: first generate an overall plan, then refactor "
-            "all files in token-budget batches.  Requires a directory path."
+            "Force the single-pass context-packed refactor (directory only). "
+            "The LLM sees only the highest-priority files that fit the token "
+            "budget.  Overrides the default heuristic."
+        ),
+    ),
+    full: bool = typer.Option(
+        False,
+        "--full",
+        help=(
+            "Force the two-phase plan -> batch execute refactor across every "
+            "source file (directory only).  Overrides the default heuristic."
         ),
     ),
 ) -> None:
-    """Refactor Python code and write changes to files."""
+    """Refactor Python code and write changes to files.
+
+    With a file path: refactors that file in place with surrounding
+    package context.
+
+    With a directory path: the mode is chosen implicitly.  If you pass
+    focused instructions via ``-i``, only the files most relevant to the
+    instructions are refactored in a single pass.  If you pass no
+    instructions, the full codebase is refactored in two phases (plan,
+    then batched execution).  ``--partial`` and ``--full`` override this
+    heuristic when needed.
+    """
     _run_refactor(
         path,
         instructions=instructions,
@@ -124,7 +144,8 @@ def refactor(
         dry_run=dry_run,
         no_confirm=no_confirm,
         no_backup=no_backup,
-        all_files=all_files,
+        partial=partial,
+        full=full,
     )
 
 
@@ -343,6 +364,38 @@ def _run_tool(
     console.print(Markdown(result))
 
 
+def _resolve_directory_mode(
+    path: Path,
+    instructions: str,
+    partial: bool,
+    full: bool,
+) -> Literal["full", "partial"]:
+    """Decide which directory refactor mode to run.
+
+    Called only when ``path`` is a directory.  Calling with a file path is a
+    programmer error and is rejected here so the CLI surface stays honest.
+
+    Rules:
+      - ``--partial`` and ``--full`` are mutually exclusive.
+      - Either flag, when set, wins over the heuristic.
+      - Otherwise: empty/whitespace instructions -> full; focused
+        instructions -> partial.
+    """
+    if partial and full:
+        raise typer.BadParameter(
+            "--partial and --full are mutually exclusive."
+        )
+    if (partial or full) and not path.is_dir():
+        raise typer.BadParameter(
+            "--partial and --full only apply to directory paths."
+        )
+    if full:
+        return "full"
+    if partial:
+        return "partial"
+    return "full" if not instructions.strip() else "partial"
+
+
 def _run_refactor(
     path: Path,
     *,
@@ -351,7 +404,8 @@ def _run_refactor(
     dry_run: bool = False,
     no_confirm: bool = False,
     no_backup: bool = False,
-    all_files: bool = False,
+    partial: bool = False,
+    full: bool = False,
 ) -> None:
     """Execute the refactoring workflow with diff review and file writing.
 
@@ -369,8 +423,8 @@ def _run_refactor(
         dry_run: If True, show changes but don't write.
         no_confirm: If True, skip confirmation prompt.
         no_backup: If True, skip creating backup files.
-        all_files: If True and path is a directory, use multi-pass
-            codebase-wide refactoring instead of single-pass context packing.
+        partial: Force the context-packed single-pass directory mode.
+        full: Force the two-phase codebase-wide directory mode.
     """
     from rich.syntax import Syntax
 
@@ -378,65 +432,44 @@ def _run_refactor(
 
     agent = _create_agent(model_override=model_override)
 
-    if all_files:
-        if not path.is_dir():
-            err_console.print(
-                "[red]--all-files requires a directory path.[/red]"
+    if path.is_dir():
+        mode = _resolve_directory_mode(path, instructions, partial, full)
+        if mode == "full":
+            console.print(
+                "[dim]Directory path -> full codebase refactor "
+                "(plan -> batch execute).[/dim]"
             )
-            raise typer.Exit(1)
+            plan = _run_codebase_refactor(agent, path, instructions=instructions)
+        else:
+            console.print(
+                "[dim]Directory path with focused instructions -> "
+                "partial refactor (context-packed single pass).[/dim]"
+            )
+            plan = _run_partial_directory_refactor(
+                agent, path, instructions=instructions
+            )
 
-        plan = _run_codebase_refactor(agent, path, instructions=instructions)
-
-    else:
-        # ── Single-file or best-effort directory refactoring ─────────────────
+    elif path.is_file():
+        if partial or full:
+            raise typer.BadParameter(
+                "--partial and --full only apply to directory paths."
+            )
         file_map: dict[str, Path] = {}
         originals: dict[str, str] = {}
 
-        if path.is_dir():
-            from pyagent.context import assemble_context
+        code = path.read_text(encoding="utf-8")
+        filename = path.name
+        resolved = path.resolve()
+        file_map[path.name] = resolved
+        file_map[str(path)] = resolved
+        originals[path.name] = code
+        originals[str(path)] = code
 
-            with console.status("[bold]Indexing codebase..."):
-                ctx = agent.load_codebase(str(path))
-
-            console.print(
-                f"[dim]Indexed {ctx.file_count} files "
-                f"(~{ctx.total_tokens:,} tokens)[/dim]"
-            )
-
-            with console.status("[bold]Selecting relevant files..."):
-                code = assemble_context(ctx, query=instructions)
-
-            # Build file map from all source modules in context.
-            for mod_path, module in ctx.source_modules.items():
-                rel = str(
-                    mod_path.relative_to(ctx.root)
-                    if mod_path.is_relative_to(ctx.root)
-                    else mod_path
-                )
-                file_map[rel] = mod_path
-                file_map[mod_path.name] = mod_path
-                originals[rel] = module.source
-                originals[mod_path.name] = module.source
-
-            filename = str(path)
-
-        elif path.is_file():
-            code = path.read_text(encoding="utf-8")
-            filename = path.name
-            resolved = path.resolve()
-            file_map[path.name] = resolved
-            file_map[str(path)] = resolved
-            originals[path.name] = code
-            originals[str(path)] = code
-
-            # Load surrounding context.
-            package_root = _find_package_root(path)
-            if package_root and package_root != path:
-                with console.status("[bold]Loading package context..."):
-                    agent.load_codebase(str(package_root))
-        else:
-            err_console.print(f"[red]Invalid path: {path}[/red]")
-            raise typer.Exit(1)
+        # Load surrounding context.
+        package_root = _find_package_root(path)
+        if package_root and package_root != path:
+            with console.status("[bold]Loading package context..."):
+                agent.load_codebase(str(package_root))
 
         with console.status("[bold]Refactoring..."):
             plan = asyncio.run(
@@ -448,6 +481,9 @@ def _run_refactor(
                     instructions=instructions,
                 )
             )
+    else:
+        err_console.print(f"[red]Invalid path: {path}[/red]")
+        raise typer.Exit(1)
 
     # Display results.
     if plan.summary:
@@ -518,7 +554,7 @@ def _run_refactor(
     if not has_git and not no_backup:
         console.print(
             "[dim]Not a git repository — backups will be created in "
-            ".pyagent_backup/[/dim]\n"
+            ".pyagent/backups/[/dim]\n"
         )
 
     # Confirmation.
@@ -532,8 +568,11 @@ def _run_refactor(
             console.print("[dim]Aborted — no files were modified.[/dim]")
             return
 
-    # Write changes.
-    written = write_changes(plan, backup=not no_backup)
+    # Write changes.  For directory refactors, hand the root to the writer so
+    # backups land in a single ``<root>/.pyagent/backups/`` tree rather than
+    # being scattered next to every touched file.
+    backup_root = path if path.is_dir() else None
+    written = write_changes(plan, backup=not no_backup, root=backup_root)
 
     if written:
         console.print(
@@ -545,6 +584,57 @@ def _run_refactor(
         )
     else:
         console.print("[yellow]No files were written.[/yellow]")
+
+
+def _run_partial_directory_refactor(
+    agent: "Agent",
+    path: Path,
+    *,
+    instructions: str = "",
+) -> "RefactorPlan":
+    """Run the context-packed single-pass refactor over a directory.
+
+    Indexes the codebase, packs the highest-priority files that fit the
+    token budget into one LLM call, and returns the resulting plan.  Use
+    this when the user has a narrow focus that does not need every file
+    examined.
+    """
+    from pyagent.context import assemble_context
+
+    with console.status("[bold]Indexing codebase..."):
+        ctx = agent.load_codebase(str(path))
+
+    console.print(
+        f"[dim]Indexed {ctx.file_count} files "
+        f"(~{ctx.total_tokens:,} tokens)[/dim]"
+    )
+
+    with console.status("[bold]Selecting relevant files..."):
+        code = assemble_context(ctx, query=instructions)
+
+    file_map: dict[str, Path] = {}
+    originals: dict[str, str] = {}
+    for mod_path, module in ctx.source_modules.items():
+        rel = str(
+            mod_path.relative_to(ctx.root)
+            if mod_path.is_relative_to(ctx.root)
+            else mod_path
+        )
+        file_map[rel] = mod_path
+        file_map[mod_path.name] = mod_path
+        originals[rel] = module.source
+        originals[mod_path.name] = module.source
+
+    with console.status("[bold]Refactoring..."):
+        return asyncio.run(
+            agent.refactor_with_plan(
+                file_map=file_map,
+                originals=originals,
+                code=code,
+                filename=str(path),
+                instructions=instructions,
+            )
+        )
 
 
 def _run_codebase_refactor(
