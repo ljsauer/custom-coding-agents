@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>{{ collage.name }} — Collage Maker</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet"
+        href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container text-center mt-4">
+  <h2>{{ collage.name }}</h2>
+  <img src="{{ url_for('static', filename=image_path) }}"
+       class="img-fluid mt-3"
+       alt="{{ collage.name }}">
+  <div class="mt-3">
+    <a href="{{ url_for('collages.index') }}" class="btn btn-secondary">← Back</a>
+  </div>
+</div>
+</body>
+</html>

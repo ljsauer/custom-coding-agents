@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Collage Maker</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</head>
+<body>
+
+<div class="jumbotron text-center">
+  <h1><b>Collage Maker</b></h1>
+  <p class="lead">Upload a plain-text file to generate a keyword-driven image collage.</p>
+</div>
+
+<div class="container">
+
+  {# Flash messages #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="close" data-dismiss="alert">&times;</button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {# Upload form #}
+  <div class="card mb-4">
+    <div class="card-body text-center">
+      <h5 class="card-title">Upload a text file</h5>
+      <form action="{{ url_for('collages.create_collage') }}" method="POST"
+            enctype="multipart/form-data">
+        <div class="form-group">
+          <input type="file" name="file" class="form-control-file d-inline-block" accept=".txt">
+        </div>
+        <button class="btn btn-success" type="submit">Generate Collage</button>
+      </form>
+    </div>
+  </div>
+
+  {# Collage grid #}
+  {% if collages %}
+  <div class="row">
+    {% for collage in collages %}
+    <div class="col-sm-6 col-md-4 col-lg-3 mb-4">
+      <div class="card h-100">
+        <a href="{{ url_for('static', filename=storage_public_path(collage.id)) }}">
+          <img src="{{ url_for('static', filename=storage_public_path(collage.id)) }}"
+               class="card-img-top"
+               height="{{ img_size }}"
+               style="object-fit: cover;"
+               alt="{{ collage.name }}">
+        </a>
+        <div class="card-body">
+          <h6 class="card-title">{{ collage.name }}</h6>
+          <p class="card-text text-muted" style="font-size:0.8rem;">
+            {{ collage.created_at.strftime('%Y-%m-%d %H:%M') if collage.created_at else '' }}
+          </p>
+        </div>
+        <div class="card-footer d-flex justify-content-between">
+
+          {# Rename — opens modal #}
+          <button class="btn btn-sm btn-outline-primary"
+                  data-toggle="modal"
+                  data-target="#renameModal{{ collage.id }}">
+            Rename
+          </button>
+
+          {# Delete #}
+          <form action="{{ url_for('collages.delete_collage', collage_id=collage.id) }}"
+                method="POST"
+                onsubmit="return confirm('Delete this collage permanently?')">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {# Rename modal #}
+    <div class="modal fade" id="renameModal{{ collage.id }}" tabindex="-1" role="dialog">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Rename Collage</h5>
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form action="{{ url_for('collages.rename_collage', collage_id=collage.id) }}"
+                  method="POST">
+              <div class="form-group">
+                <label for="name{{ collage.id }}">New name</label>
+                <input type="text"
+                       class="form-control"
+                       id="name{{ collage.id }}"
+                       name="name"
+                       value="{{ collage.name }}">
+              </div>
+              <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="text-center text-muted">No collages yet — upload a text file to get started.</p>
+  {% endif %}
+
+</div>
+</body>
+</html>

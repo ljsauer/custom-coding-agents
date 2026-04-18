@@ -9,7 +9,7 @@ from app.computer_vision.edge_detector import EdgeDetector
 
 class TestEdgeDetector(unittest.TestCase):
     def test_draws_contours(self):
-        self.image = np.zeros((300, 300, 3), dtype='uint8')
+        self.image = np.zeros((300, 300, 3), dtype="uint8")
         self.image = cv2.circle(self.image, (150, 150), 25, (0, 255, 255), 2)
         img = self.image.copy()
         self.ed = EdgeDetector(self.image)
@@ -23,7 +23,7 @@ class TestEdgeDetector(unittest.TestCase):
     @staticmethod
     def test_crop_object_from_images():
         for image in os.listdir("test_imgs"):
-            if not image.endswith(('jpg', 'png')) or image.endswith('shapes.jpg'):
+            if not image.endswith(("jpg", "png")) or image.endswith("shapes.jpg"):
                 continue
             image = cv2.imread(f"test_imgs/{image}")
             cv2.imshow("Find pizza", image)
