@@ -17,18 +17,22 @@ class Canvas(BaseModel):
     width: int = Field(..., description="Canvas width in pixels", gt=0, le=8192)
     height: int = Field(..., description="Canvas height in pixels", gt=0, le=8192)
 
-    @field_validator('width', 'height')
+    @field_validator("width", "height")
     @classmethod
     def validate_reasonable_dimensions(cls, v: int, info) -> int:
         """Ensure canvas dimensions are reasonable for image processing."""
         if v < 256:
-            raise ValueError(f"Canvas {info.field_name} should be at least 256px for quality results")
+            raise ValueError(
+                f"Canvas {info.field_name} should be at least 256px for quality results"
+            )
         if v > 4096:
-            raise ValueError(f"Canvas {info.field_name} above 4096px may cause memory issues")
+            raise ValueError(
+                f"Canvas {info.field_name} above 4096px may cause memory issues"
+            )
         return v
 
-    @model_validator(mode='after')
-    def validate_aspect_ratio(self) -> 'Canvas':
+    @model_validator(mode="after")
+    def validate_aspect_ratio(self) -> "Canvas":
         """Ensure reasonable aspect ratios."""
         aspect_ratio = self.width / self.height
         if aspect_ratio < 0.25 or aspect_ratio > 4.0:
@@ -82,22 +86,30 @@ class Rectangle:
     def __post_init__(self):
         """Validate rectangle coordinates."""
         if self.x2 <= self.x1:
-            raise ValueError(f"Invalid rectangle: x2 ({self.x2}) must be > x1 ({self.x1})")
+            raise ValueError(
+                f"Invalid rectangle: x2 ({self.x2}) must be > x1 ({self.x1})"
+            )
         if self.y2 <= self.y1:
-            raise ValueError(f"Invalid rectangle: y2 ({self.y2}) must be > y1 ({self.y1})")
+            raise ValueError(
+                f"Invalid rectangle: y2 ({self.y2}) must be > y1 ({self.y1})"
+            )
 
     @classmethod
     def from_origin_and_size(cls, x: int, y: int, w: int, h: int) -> Rectangle:
         """Create rectangle from top-left corner and dimensions."""
         if w <= 0 or h <= 0:
-            raise ValueError(f"Rectangle dimensions must be positive: width={w}, height={h}")
+            raise ValueError(
+                f"Rectangle dimensions must be positive: width={w}, height={h}"
+            )
         return cls(x1=x, y1=y, x2=x + w, y2=y + h)
 
     @classmethod
     def from_center_and_size(cls, cx: int, cy: int, w: int, h: int) -> Rectangle:
         """Create rectangle from center point and dimensions."""
         if w <= 0 or h <= 0:
-            raise ValueError(f"Rectangle dimensions must be positive: width={w}, height={h}")
+            raise ValueError(
+                f"Rectangle dimensions must be positive: width={w}, height={h}"
+            )
         half_w, half_h = w // 2, h // 2
         return cls(x1=cx - half_w, y1=cy - half_h, x2=cx + half_w, y2=cy + half_h)
 
@@ -140,11 +152,13 @@ class Rectangle:
         """
         if self is other:
             return False
-        
+
         # Check for overlap (not just touching at edges)
         return (
-            self.x2 > other.x1 and self.x1 < other.x2 and
-            self.y2 > other.y1 and self.y1 < other.y2
+            self.x2 > other.x1
+            and self.x1 < other.x2
+            and self.y2 > other.y1
+            and self.y1 < other.y2
         )
 
     def contains_point(self, x: int, y: int) -> bool:
@@ -155,12 +169,12 @@ class Rectangle:
         """Return the intersection rectangle, or None if no overlap."""
         if not self.collides_with(other):
             return None
-        
+
         x1 = max(self.x1, other.x1)
         y1 = max(self.y1, other.y1)
         x2 = min(self.x2, other.x2)
         y2 = min(self.y2, other.y2)
-        
+
         return Rectangle(x1, y1, x2, y2)
 
     def __repr__(self) -> str:

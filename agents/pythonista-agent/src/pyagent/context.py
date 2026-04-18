@@ -295,7 +295,7 @@ def discover_python_files(root: Path) -> list[Path]:
             continue
         files.append(path)
 
-    logger.debug("Discovered %d Python files under %s", len(files), root)
+    logger.info("Discovered %d Python files under %s", len(files), root)
     return files
 
 
@@ -759,7 +759,7 @@ def batch_files(
     if current_batch:
         batches.append(current_batch)
 
-    logger.debug(
+    logger.info(
         "Batched %d modules into %d batches (budget: %d tokens/batch)",
         sum(len(b) for b in batches),
         len(batches),

@@ -91,7 +91,7 @@ class KnowledgeBase:
             results.append(chunk)
             token_budget -= chunk.token_estimate
 
-        logger.debug(
+        logger.info(
             "Retrieved %d chunks for query '%s' (%d tokens used)",
             len(results),
             query[:50],
@@ -152,7 +152,7 @@ def load_knowledge_base(docs_path: Path) -> KnowledgeBase:
     for md_file in sorted(docs_path.glob("*.md")):
         file_chunks = _split_markdown(md_file)
         chunks.extend(file_chunks)
-        logger.debug("Indexed %d chunks from %s", len(file_chunks), md_file.name)
+        logger.info("Indexed %d chunks from %s", len(file_chunks), md_file.name)
 
     kb = KnowledgeBase(chunks=chunks)
     logger.info("Knowledge base loaded: %d chunks from %s", kb.total_chunks, docs_path)

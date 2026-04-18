@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -55,10 +54,10 @@ def create_app(
 ) -> FastAPI:
     """
     Create and configure the FastAPI application.
-    
+
     Args:
         create_uc: Use case for creating collages
-        rename_uc: Use case for renaming collages  
+        rename_uc: Use case for renaming collages
         delete_uc: Use case for deleting collages
         list_uc: Use case for listing collages
         storage: Storage adapter for collage images
@@ -66,7 +65,7 @@ def create_app(
         debug: Enable debug mode
         allowed_hosts: List of allowed hosts for TrustedHostMiddleware
         cors_origins: List of allowed CORS origins
-        
+
     Returns:
         Configured FastAPI application
     """
@@ -79,14 +78,14 @@ def create_app(
         docs_url="/docs" if debug else None,
         redoc_url="/redoc" if debug else None,
     )
-    
+
     # Security middleware - restrict allowed hosts in production
     if allowed_hosts is not None:
         app.add_middleware(
             TrustedHostMiddleware,
             allowed_hosts=allowed_hosts,
         )
-    
+
     # Configure CORS
     cors_config = {
         "allow_credentials": True,
@@ -94,16 +93,19 @@ def create_app(
         "allow_headers": ["*"],
         "expose_headers": ["X-Request-ID"],
     }
-    
+
     if cors_origins is not None:
         cors_config["allow_origins"] = cors_origins
     elif debug:
         cors_config["allow_origins"] = ["*"]  # Only in debug mode
     else:
-        cors_config["allow_origins"] = ["http://localhost:3000", "http://127.0.0.1:3000"]
-    
+        cors_config["allow_origins"] = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+
     app.add_middleware(CORSMiddleware, **cors_config)
-    
+
     # Mount static files for serving images
     try:
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -111,7 +113,7 @@ def create_app(
     except RuntimeError as e:
         logger.error("Failed to mount static files: %s", e)
         raise
-    
+
     # Set up dependency injection
     set_dependencies(
         create_uc=create_uc,
@@ -120,16 +122,16 @@ def create_app(
         list_uc=list_uc,
         storage=storage,
     )
-    
+
     # Register routes - Fixed: Remove /api/v1 prefix since routes define their own paths
     app.include_router(router)
-    
+
     # Health check endpoint
     @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
     async def health_check() -> dict[str, str]:
         """Health check endpoint for monitoring."""
         return {"status": "healthy", "service": "collage-maker"}
-    
+
     # Exception handlers
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
@@ -141,22 +143,24 @@ def create_app(
                 "error": "domain_error",
                 "message": str(exc),
                 "success": False,
-            }
+            },
         )
-    
+
     @app.exception_handler(ValueError)
-    async def validation_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+    async def validation_error_handler(
+        request: Request, exc: ValueError
+    ) -> JSONResponse:
         """Handle validation errors."""
         logger.warning("Validation error: %s", exc)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
-                "error": "validation_error", 
+                "error": "validation_error",
                 "message": str(exc),
                 "success": False,
-            }
+            },
         )
-    
+
     @app.exception_handler(500)
     async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
         """Handle unexpected internal errors."""
@@ -167,7 +171,7 @@ def create_app(
                 "error": "internal_error",
                 "message": "An unexpected error occurred" if not debug else str(exc),
                 "success": False,
-            }
+            },
         )
-    
+
     return app

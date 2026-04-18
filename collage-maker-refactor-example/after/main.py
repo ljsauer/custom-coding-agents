@@ -22,6 +22,8 @@ Startup sequence:
   8. Run with uvicorn with proper error handling
 """
 
+from __future__ import annotations
+
 import logging
 import sys
 from pathlib import Path
@@ -56,17 +58,17 @@ from collage_maker.presentation.app import create_app
 
 
 def setup_logging(*, debug: bool = False) -> None:
-    """Configure application logging."""
+    """Configure application logging with appropriate levels and formatting."""
     level = logging.DEBUG if debug else logging.INFO
-    
+
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.StreamHandler(sys.stdout),
-        ]
+        ],
     )
-    
+
     # Reduce noise from third-party libraries
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     if not debug:
@@ -75,25 +77,30 @@ def setup_logging(*, debug: bool = False) -> None:
 
 
 def validate_configuration() -> None:
-    """Validate critical configuration parameters."""
+    """
+    Validate critical configuration parameters before application startup.
+
+    Raises:
+        ValueError: If any configuration parameter is invalid
+    """
     errors = []
-    
+
     # Validate numeric constraints
     if cfg.canvas_width <= 0 or cfg.canvas_height <= 0:
         errors.append("Canvas dimensions must be positive")
-    
+
     if cfg.images_per_keyword <= 0:
-        errors.append("Images per keyword must be positive") 
-        
+        errors.append("Images per keyword must be positive")
+
     if cfg.n_keywords <= 0:
         errors.append("Number of keywords must be positive")
-    
+
     # Validate paths
     try:
         Path(cfg.database_path).parent.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         errors.append(f"Cannot create database directory: {e}")
-    
+
     if errors:
         for error in errors:
             logging.error("Configuration error: %s", error)
@@ -101,12 +108,17 @@ def validate_configuration() -> None:
 
 
 def bootstrap_filesystem() -> None:
-    """Bootstrap required filesystem directories."""
+    """
+    Bootstrap required filesystem directories.
+
+    Raises:
+        OSError: If directory creation fails
+    """
     directories = [
         ("collage_dir", cfg.collage_dir),
         ("download_dir", cfg.download_dir),
     ]
-    
+
     for name, directory in directories:
         try:
             path = Path(directory)
@@ -114,18 +126,26 @@ def bootstrap_filesystem() -> None:
             logging.info("Ensured directory exists: %s -> %s", name, path.resolve())
         except OSError as e:
             logging.error("Failed to create directory %s (%s): %s", name, directory, e)
-            raise
+            raise OSError(f"Failed to create {name} directory: {e}") from e
 
 
 def create_infrastructure_adapters() -> tuple[
     SqliteCollageRepository,
-    GoogleImageFetcher, 
+    GoogleImageFetcher,
     LocalDiskStorage,
     OpenCVRenderer,
 ]:
-    """Create and validate infrastructure adapters."""
+    """
+    Create and validate infrastructure adapters.
+
+    Returns:
+        Tuple of initialized infrastructure adapters
+
+    Raises:
+        RuntimeError: If any adapter initialization fails
+    """
     logging.info("Initializing infrastructure adapters...")
-    
+
     # Database
     try:
         engine = init_db(cfg.database_path)
@@ -133,26 +153,28 @@ def create_infrastructure_adapters() -> tuple[
         logging.info("Database initialized: %s", cfg.database_path)
     except Exception as e:
         logging.error("Database initialization failed: %s", e)
-        raise
-    
+        raise RuntimeError(f"Database initialization failed: {e}") from e
+
     # Image sourcing
     try:
         image_source = GoogleImageFetcher(
             images_per_keyword=cfg.images_per_keyword,
         )
-        logging.info("Image fetcher configured: %d images per keyword", cfg.images_per_keyword)
+        logging.info(
+            "Image fetcher configured: %d images per keyword", cfg.images_per_keyword
+        )
     except Exception as e:
         logging.error("Image fetcher initialization failed: %s", e)
-        raise
-    
+        raise RuntimeError(f"Image fetcher initialization failed: {e}") from e
+
     # Storage
     try:
         storage = LocalDiskStorage(collage_dir=cfg.collage_dir)
         logging.info("Storage configured: %s", Path(cfg.collage_dir).resolve())
     except Exception as e:
         logging.error("Storage initialization failed: %s", e)
-        raise
-    
+        raise RuntimeError(f"Storage initialization failed: {e}") from e
+
     # Rendering
     try:
         renderer = OpenCVRenderer(
@@ -161,26 +183,39 @@ def create_infrastructure_adapters() -> tuple[
             max_word_font_size=cfg.max_word_font_size,
             colormaps=cfg.colormaps,
         )
-        logging.info("Renderer configured: %dx%d canvas", cfg.canvas_width, cfg.canvas_height)
+        logging.info(
+            "Renderer configured: %dx%d canvas", cfg.canvas_width, cfg.canvas_height
+        )
     except Exception as e:
         logging.error("Renderer initialization failed: %s", e)
-        raise
-    
+        raise RuntimeError(f"Renderer initialization failed: {e}") from e
+
     return repository, image_source, storage, renderer
 
 
 def create_domain_services() -> KeywordExtractor:
-    """Create domain services."""
+    """
+    Create domain services with configuration-driven parameters.
+
+    Returns:
+        Configured KeywordExtractor instance
+
+    Raises:
+        RuntimeError: If service initialization fails
+    """
     try:
         keyword_extractor = KeywordExtractor(
             n_keywords=cfg.n_keywords,
             extra_stopwords=cfg.extra_stopwords,
         )
-        logging.info("Keyword extractor configured: %d keywords", cfg.n_keywords)
+        logging.info(f"{type(keyword_extractor)}")
+        logging.info(
+            f"Keyword extractor configured to use max {cfg.n_keywords} keywords"
+        )
         return keyword_extractor
     except Exception as e:
-        logging.error("Domain services initialization failed: %s", e)
-        raise
+        logging.error(f"Domain services initialization failed: {e}")
+        raise RuntimeError(f"Domain services initialization failed: {e}") from e
 
 
 def create_use_cases(
@@ -189,8 +224,21 @@ def create_use_cases(
     storage: LocalDiskStorage,
     renderer: OpenCVRenderer,
     keyword_extractor: KeywordExtractor,
-) -> tuple[CreateCollageUseCase, RenameCollageUseCase, DeleteCollageUseCase, ListCollagesUseCase]:
-    """Create application use cases with dependency injection."""
+) -> tuple[
+    CreateCollageUseCase,
+    RenameCollageUseCase,
+    DeleteCollageUseCase,
+    ListCollagesUseCase,
+]:
+    """
+    Create application use cases with dependency injection.
+
+    Returns:
+        Tuple of configured use case instances
+
+    Raises:
+        RuntimeError: If use case initialization fails
+    """
     try:
         create_uc = CreateCollageUseCase(
             image_source=image_source,
@@ -199,46 +247,46 @@ def create_use_cases(
             repository=repository,
             keyword_extractor=keyword_extractor,
         )
-        
+
         rename_uc = RenameCollageUseCase(repository=repository)
         delete_uc = DeleteCollageUseCase(repository=repository, storage=storage)
         list_uc = ListCollagesUseCase(repository=repository)
-        
+
         logging.info("Application use cases initialized")
         return create_uc, rename_uc, delete_uc, list_uc
     except Exception as e:
         logging.error("Use case initialization failed: %s", e)
-        raise
+        raise RuntimeError(f"Use case initialization failed: {e}") from e
 
 
 def bootstrap() -> None:
-    """Bootstrap and run the application."""
+    """Bootstrap and run the application with comprehensive error handling."""
     # Determine if we're in debug mode
     debug = "--debug" in sys.argv or "--reload" in sys.argv
-    
+
     try:
         # 1. Setup logging early
         setup_logging(debug=debug)
         logger = logging.getLogger(__name__)
         logger.info("Starting Collage Maker application...")
-        
+
         # 2. Validate configuration
         validate_configuration()
-        
+
         # 3. Bootstrap filesystem
         bootstrap_filesystem()
-        
+
         # 4. Create infrastructure adapters
         repository, image_source, storage, renderer = create_infrastructure_adapters()
-        
+
         # 5. Create domain services
         keyword_extractor = create_domain_services()
-        
+
         # 6. Create use cases
         create_uc, rename_uc, delete_uc, list_uc = create_use_cases(
             repository, image_source, storage, renderer, keyword_extractor
         )
-        
+
         # 7. Create FastAPI application
         app = create_app(
             create_uc=create_uc,
@@ -251,9 +299,9 @@ def bootstrap() -> None:
             allowed_hosts=["127.0.0.1", "localhost"] if not debug else None,
             cors_origins=None,  # Use defaults from create_app
         )
-        
+
         logger.info("Application bootstrap completed successfully")
-        
+
         # 8. Run with uvicorn
         uvicorn.run(
             app,
@@ -263,7 +311,7 @@ def bootstrap() -> None:
             reload=debug,
             access_log=debug,
         )
-        
+
     except KeyboardInterrupt:
         logger.info("Application shutdown requested by user")
     except Exception as e:
@@ -272,13 +320,13 @@ def bootstrap() -> None:
 
 
 def main() -> NoReturn:
-    """Main entry point with proper error handling."""
+    """Main entry point with proper error handling and exit codes."""
     try:
         bootstrap()
     except Exception as e:
         print(f"Fatal error: {e}", file=sys.stderr)
         sys.exit(1)
-    
+
     sys.exit(0)
 
 
