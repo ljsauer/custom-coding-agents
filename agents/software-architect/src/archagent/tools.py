@@ -1,5 +1,6 @@
-from pathlib import Path
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -117,8 +118,6 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
                 return f"Error: old_str appears more than once in {target}"
             target.write_text(original.replace(old_str, new_str, 1))
             return f"Edited: {target}"
-
-    return f"Unknown tool: {tool_name}"
 
     return f"Unknown tool: {tool_name}"
 

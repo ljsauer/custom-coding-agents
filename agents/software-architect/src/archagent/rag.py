@@ -1,10 +1,13 @@
-# rag.py
+"""RAG index + retrieval over architecture documentation."""
+
+import logging
 import re
-from pyagent import logging
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 from sentence_transformers import SentenceTransformer
 
+# Keep third-party libraries quiet.
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
