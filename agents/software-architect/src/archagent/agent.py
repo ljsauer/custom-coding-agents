@@ -3,17 +3,17 @@ from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from prompts import SYSTEM_PROMPT
-from rag import build_index, retrieve, build_context_block
-from memory import (
-    new_session,
-    save_session,
+from archagent.memory import (
+    build_decision_block,
+    get_project_decisions,
     load_session,
     log_decision,
-    get_project_decisions,
-    build_decision_block,
+    new_session,
+    save_session,
 )
-from tools import TOOL_DEFINITIONS, execute_tool
+from archagent.prompts import SYSTEM_PROMPT
+from archagent.rag import build_context_block, build_index, retrieve
+from archagent.tools import TOOL_DEFINITIONS, execute_tool
 
 load_dotenv()
 

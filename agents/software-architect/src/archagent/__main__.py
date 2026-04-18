@@ -1,5 +1,7 @@
-from agent import ArchAgent
-from memory import list_sessions
+"""Interactive entry point for the archagent CLI."""
+
+from archagent.agent import ArchAgent
+from archagent.memory import list_sessions
 
 
 def pick_session() -> tuple[str, str | None]:
@@ -26,7 +28,7 @@ def pick_session() -> tuple[str, str | None]:
     return project, None
 
 
-def main():
+def main() -> None:
     project, resume_id = pick_session()
     agent = ArchAgent(project=project, resume_id=resume_id)
 
@@ -37,7 +39,7 @@ def main():
     while True:
         try:
             user_input = input("You: ").strip()
-        except KeyboardInterrupt, EOFError:
+        except (KeyboardInterrupt, EOFError):
             print("\nSession saved.")
             break
 
