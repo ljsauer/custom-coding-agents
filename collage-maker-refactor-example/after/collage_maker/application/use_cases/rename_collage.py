@@ -12,9 +12,13 @@ Classification: Application Service
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from collage_maker.domain.exceptions import CollageNotFoundError
-from collage_maker.domain.model.collage import Collage
-from collage_maker.domain.ports.collage_repository import ICollageRepository
+
+if TYPE_CHECKING:
+    from collage_maker.domain.model.collage import Collage
+    from collage_maker.domain.ports.collage_repository import ICollageRepository
 
 
 class RenameCollageUseCase:

@@ -22,16 +22,20 @@ domain intent. "SubjectIsolator" names what the service accomplishes.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 # Optional imports for modern segmentation
 try:
     import rembg
+
     _REMBG_AVAILABLE = True
 except ImportError:
     _REMBG_AVAILABLE = False
@@ -39,6 +43,7 @@ except ImportError:
 
 try:
     from PIL import Image
+
     _PIL_AVAILABLE = True
 except ImportError:
     _PIL_AVAILABLE = False
@@ -47,7 +52,7 @@ except ImportError:
 class SubjectIsolator:
     """
     Locates and extracts the largest foreground subject from an image.
-    
+
     Uses modern U2-Net segmentation as the primary method with
     traditional Canny+GrabCut as a fallback for robustness.
 
@@ -61,7 +66,7 @@ class SubjectIsolator:
         if _REMBG_AVAILABLE and _PIL_AVAILABLE:
             try:
                 # Create a single session for the instance to share across calls
-                self._rembg_session = rembg.new_session('u2net')
+                self._rembg_session = rembg.new_session("u2net")
                 logger.debug("Initialized U2-Net session for modern segmentation")
             except Exception as e:
                 logger.warning("Failed to initialize U2-Net session: %s", e)
@@ -71,7 +76,7 @@ class SubjectIsolator:
         """
         Return the largest subject as an RGBA numpy array with a transparent
         background, or None if no subject could be found.
-        
+
         Tries modern U2-Net segmentation first, falls back to Canny+GrabCut
         if modern method is unavailable or fails.
         """
@@ -107,10 +112,10 @@ class SubjectIsolator:
     def _isolate_with_rembg(self, image: np.ndarray) -> np.ndarray | None:
         """
         Isolate subject using modern U2-Net segmentation via rembg.
-        
+
         Args:
             image: Input BGR image as numpy array
-            
+
         Returns:
             RGBA numpy array with transparent background, or None if failed
         """
@@ -149,10 +154,10 @@ class SubjectIsolator:
     def _isolate_with_grabcut(self, image: np.ndarray) -> np.ndarray | None:
         """
         Fallback isolation using Canny edge detection + GrabCut segmentation.
-        
+
         Args:
             image: Input BGR image as numpy array
-            
+
         Returns:
             RGBA numpy array with transparent background, or None if failed
         """
@@ -174,10 +179,10 @@ class SubjectIsolator:
     def _crop_to_subject(self, rgba_image: np.ndarray) -> np.ndarray | None:
         """
         Crop RGBA image to the bounding box of non-transparent pixels.
-        
+
         Args:
             rgba_image: RGBA numpy array
-            
+
         Returns:
             Cropped RGBA array, or None if no valid subject area found
         """
@@ -193,7 +198,7 @@ class SubjectIsolator:
         if w < 10 or h < 10:
             return None
 
-        return rgba_image[y:y+h, x:x+w]
+        return rgba_image[y : y + h, x : x + w]
 
     @staticmethod
     def _detect_edges(image: np.ndarray) -> np.ndarray:
@@ -208,7 +213,9 @@ class SubjectIsolator:
     def _find_contours(edge_image: np.ndarray) -> list[np.ndarray]:
         """Find contours using modern OpenCV API."""
         # Use modern cv2.findContours API that returns (contours, hierarchy)
-        contours, _ = cv2.findContours(edge_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(
+            edge_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+        )
         return contours
 
     @staticmethod
@@ -246,9 +253,11 @@ class SubjectIsolator:
             return None
 
         output_mask = (
-            np.where((mask == cv2.GC_BGD) | (mask == cv2.GC_PR_BGD), 0, 1).astype(
-                "uint8"
-            )
+            np.where(
+                (mask == cv2.GC_BGD) | (mask == cv2.GC_PR_BGD),
+                0,
+                1,
+            ).astype("uint8")
             * 255
         )
 

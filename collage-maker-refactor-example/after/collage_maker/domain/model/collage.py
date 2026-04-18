@@ -13,12 +13,15 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime as dt
+from typing import TYPE_CHECKING
 
 from collage_maker.domain.exceptions import (
     CollageCreationError,
     InvalidCollageNameError,
 )
-from collage_maker.domain.model.keyword import Keyword
+
+if TYPE_CHECKING:
+    from collage_maker.domain.model.keyword import Keyword
 
 
 @dataclass

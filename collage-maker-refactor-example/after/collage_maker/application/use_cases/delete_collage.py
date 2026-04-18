@@ -13,9 +13,13 @@ Classification: Application Service
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from collage_maker.domain.exceptions import CollageNotFoundError
-from collage_maker.domain.ports.collage_repository import ICollageRepository
-from collage_maker.domain.ports.collage_storage import ICollageStorage
+
+if TYPE_CHECKING:
+    from collage_maker.domain.ports.collage_repository import ICollageRepository
+    from collage_maker.domain.ports.collage_storage import ICollageStorage
 
 
 class DeleteCollageUseCase:

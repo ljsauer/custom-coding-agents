@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import struct
 import zlib
+from typing import TYPE_CHECKING
 
-from collage_maker.domain.model.keyword import Keyword
 from collage_maker.domain.ports.reference_image_source import IReferenceImageSource
+
+if TYPE_CHECKING:
+    from collage_maker.domain.model.keyword import Keyword
 
 
 def _minimal_jpeg() -> bytes:
