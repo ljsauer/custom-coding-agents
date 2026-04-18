@@ -45,15 +45,15 @@ class Collage:
         """Validate aggregate state after construction."""
         if not self.id:
             raise CollageCreationError("Collage ID cannot be empty")
-        
+
         if not self.keywords:
             raise CollageCreationError("Collage must have at least one keyword")
-        
+
         if not self.name or not self.name.strip():
             raise InvalidCollageNameError("Collage name cannot be blank")
-        
+
         # Normalize the name
-        object.__setattr__(self, 'name', self.name.strip())
+        object.__setattr__(self, "name", self.name.strip())
 
     # ------------------------------------------------------------------
     # Factory Methods
@@ -61,11 +61,11 @@ class Collage:
 
     @classmethod
     def create(
-        cls, 
-        keywords: list[Keyword], 
+        cls,
+        keywords: list[Keyword],
         name: str | None = None,
         source_text: str = "",
-        processing_time: float = 0.0
+        processing_time: float = 0.0,
     ) -> Collage:
         """
         Named constructor — the canonical way to bring a new Collage into
@@ -75,16 +75,16 @@ class Collage:
             raise CollageCreationError(
                 "A collage must be based on at least one keyword."
             )
-        
+
         # Validate keyword quality
         unique_keywords = list({kw.text: kw for kw in keywords}.values())
         if len(unique_keywords) < len(keywords):
             # Remove duplicates while preserving order
             keywords = unique_keywords
-        
+
         collage_id = str(uuid.uuid4())
         default_name = cls._generate_smart_name(keywords, collage_id)
-        
+
         return cls(
             id=collage_id,
             keywords=keywords,
@@ -98,7 +98,7 @@ class Collage:
         """Generate a meaningful default name based on top keywords."""
         if not keywords:
             return f"collage-{collage_id[:8]}"
-        
+
         # Use structural pattern matching for name generation
         match len(keywords):
             case 1:
@@ -122,27 +122,27 @@ class Collage:
         """
         if not new_name or not new_name.strip():
             raise InvalidCollageNameError("Collage name must not be blank.")
-        
+
         clean_name = new_name.strip()
-        
+
         # Enhanced name validation
         if len(clean_name) > 100:
             raise InvalidCollageNameError(
                 "Collage name too long. Maximum 100 characters allowed."
             )
-        
+
         if len(clean_name) < 2:
             raise InvalidCollageNameError(
                 "Collage name too short. Minimum 2 characters required."
             )
-        
+
         # Check for problematic characters
-        forbidden_chars = {'/', '\\', ':', '*', '?', '"', '<', '>', '|'}
+        forbidden_chars = {"/", "\\", ":", "*", "?", '"', "<", ">", "|"}
         if any(char in clean_name for char in forbidden_chars):
             raise InvalidCollageNameError(
                 f"Collage name contains forbidden characters: {forbidden_chars}"
             )
-        
+
         self.name = clean_name
         self.updated_at = dt.now(dt.UTC)
 
@@ -152,7 +152,7 @@ class Collage:
             raise ValueError("Image count cannot be negative")
         if processing_time < 0:
             raise ValueError("Processing time cannot be negative")
-        
+
         self.image_count = image_count
         self.processing_time_seconds = processing_time
         self.updated_at = dt.now(dt.UTC)
@@ -167,7 +167,7 @@ class Collage:
 
     def primary_keywords(self, count: int = 5) -> list[Keyword]:
         """Get the top N keywords (assumes keywords are already ranked)."""
-        return self.keywords[:min(count, len(self.keywords))]
+        return self.keywords[: min(count, len(self.keywords))]
 
     def get_quality_score(self) -> float:
         """
@@ -175,17 +175,19 @@ class Collage:
         Returns a score between 0.0 and 1.0.
         """
         # Base score factors
-        keyword_quality = min(len(self.keywords) / 25, 1.0)  # Optimal around 25 keywords
+        keyword_quality = min(
+            len(self.keywords) / 25, 1.0
+        )  # Optimal around 25 keywords
         text_quality = min(self.source_text_length / 5000, 1.0)  # Good text length
         processing_quality = 1.0 if self.processing_time_seconds > 0 else 0.5
         image_quality = min(self.image_count / 50, 1.0) if self.image_count > 0 else 0.5
-        
+
         # Weighted average
         return (
-            keyword_quality * 0.3 + 
-            text_quality * 0.2 + 
-            processing_quality * 0.2 + 
-            image_quality * 0.3
+            keyword_quality * 0.3
+            + text_quality * 0.2
+            + processing_quality * 0.2
+            + image_quality * 0.3
         )
 
     def is_recent(self, hours: int = 24) -> bool:

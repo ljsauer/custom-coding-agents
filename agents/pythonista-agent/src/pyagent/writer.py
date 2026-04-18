@@ -206,7 +206,7 @@ def write_changes(plan: RefactorPlan, *, backup: bool = True) -> list[Path]:
 
     for change in plan.changes:
         if not change.has_changes:
-            logger.debug("Skipping %s — no changes", change.path)
+            logger.info("Skipping %s — no changes", change.path)
             continue
 
         if backup:
