@@ -106,6 +106,121 @@ class RefactorTool:
             },
         )
 
+    async def plan(
+            self,
+            structural_summary: str,
+            *,
+            user_request: str = "",
+            knowledge_base: KnowledgeBase | None = None,
+    ) -> str:
+        """Generate an overall refactoring plan from a codebase structural summary.
+
+        This is the first phase of codebase-wide refactoring.  The LLM analyses
+        the structure of the whole project and returns a strategy that subsequent
+        batch-refactoring passes will follow.
+
+        Args:
+            structural_summary: Output of ``CodebaseContext.summary()``.
+            user_request: Optional focus for the refactoring plan.
+            knowledge_base: Knowledge base for retrieving relevant patterns.
+
+        Returns:
+            A text string describing the overall refactoring strategy.
+        """
+        from pyagent.prompts import build_codebase_plan_prompt
+
+        rag_context = ""
+        if knowledge_base:
+            query = f"refactoring plan codebase {user_request or ''}".strip()
+            rag_context = knowledge_base.retrieve_formatted(
+                query,
+                sources=self.relevant_sources(),
+                max_tokens=4000,
+            )
+
+        system_prompt, user_message = build_codebase_plan_prompt(
+            structural_summary,
+            context=rag_context,
+            user_request=user_request,
+        )
+
+        logger.info(
+            "Generating codebase refactoring plan (%d chars summary)",
+            len(structural_summary),
+        )
+
+        response = await self._client.messages.create(
+            model=self._settings.model,
+            max_tokens=self._settings.max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        return response.content[0].text
+
+    async def execute_batch(
+            self,
+            batch_code: str,
+            *,
+            batch_label: str = "",
+            overall_plan: str = "",
+            user_request: str = "",
+            knowledge_base: KnowledgeBase | None = None,
+    ) -> ToolResult:
+        """Refactor a batch of files as part of codebase-wide refactoring.
+
+        Args:
+            batch_code: Pre-formatted string with ``### FILE:`` sections.
+            batch_label: Human-readable label (e.g. ``"1/3"``).
+            overall_plan: The overall refactoring plan from the planning phase.
+            user_request: Specific refactoring instructions.
+            knowledge_base: Knowledge base for retrieving relevant patterns.
+
+        Returns:
+            A ``ToolResult`` containing the raw LLM response.
+        """
+        from pyagent.prompts import build_batch_refactor_prompt
+
+        rag_context = ""
+        if knowledge_base:
+            query = f"refactor {user_request or ''} {overall_plan[:200] or ''}".strip()
+            rag_context = knowledge_base.retrieve_formatted(
+                query,
+                sources=self.relevant_sources(),
+                max_tokens=3000,
+            )
+
+        system_prompt, user_message = build_batch_refactor_prompt(
+            batch_code,
+            batch_label=batch_label,
+            overall_plan=overall_plan,
+            context=rag_context,
+            user_request=user_request,
+        )
+
+        logger.info(
+            "Refactoring batch %s (%d chars)",
+            batch_label or "?",
+            len(batch_code),
+        )
+
+        response = await self._client.messages.create(
+            model=self._settings.model,
+            max_tokens=self._settings.batch_max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        content = response.content[0].text
+        return ToolResult(
+            content=content,
+            metadata={
+                "model": self._settings.model,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+            },
+        )
+
 
 def parse_refactor_response(
     response: str,

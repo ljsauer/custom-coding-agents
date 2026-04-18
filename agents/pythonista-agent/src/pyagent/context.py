@@ -703,6 +703,70 @@ def assemble_single_file(
 
     return "\n\n".join(parts)
 
+def batch_files(
+    context: CodebaseContext,
+    *,
+    token_budget: int = DEFAULT_TOKEN_BUDGET,
+    include_tests: bool = False,
+) -> list[list[ModuleInfo]]:
+    """Group all refactorable modules into token-budget-constrained batches.
+
+    Unlike ``assemble_context``, this function includes **all** source files
+    rather than only the highest-priority subset.  Files are sorted by score
+    (highest first) so the most important modules appear in early batches.
+
+    Each batch contains files whose combined token estimate fits within
+    ``token_budget``.  A file that exceeds the budget on its own is placed in
+    a batch by itself.
+
+    Args:
+        context: The full codebase context.
+        token_budget: Maximum approximate tokens per batch.
+        include_tests: Whether to include test files in the batches.
+
+    Returns:
+        A list of batches, each batch being a list of ``ModuleInfo`` objects.
+        Returns an empty list if there are no refactorable files.
+    """
+    scored = score_modules(context, include_tests=include_tests)
+
+    batches: list[list[ModuleInfo]] = []
+    current_batch: list[ModuleInfo] = []
+    current_tokens = 0
+
+    for scored_module in scored:
+        module = scored_module.module
+        module_tokens = module.token_estimate
+
+        # Files larger than the budget get their own batch.
+        if module_tokens > token_budget:
+            if current_batch:
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+            batches.append([module])
+            continue
+
+        # Start a new batch if adding this file would overflow the current one.
+        if current_tokens + module_tokens > token_budget and current_batch:
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+
+        current_batch.append(module)
+        current_tokens += module_tokens
+
+    if current_batch:
+        batches.append(current_batch)
+
+    logger.debug(
+        "Batched %d modules into %d batches (budget: %d tokens/batch)",
+        sum(len(b) for b in batches),
+        len(batches),
+        token_budget,
+    )
+    return batches
+
 
 # ───────────────────────────────────────────────────────────────────────────
 # Private helpers
