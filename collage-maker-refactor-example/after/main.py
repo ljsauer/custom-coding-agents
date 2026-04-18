@@ -5,7 +5,7 @@ This is the ONLY file in the codebase that:
   - Names concrete infrastructure adapter classes
   - Constructs those adapters
   - Injects them into use cases through domain port interfaces
-  - Hands the wired use cases to the Flask presentation layer
+  - Hands the wired use cases to the FastAPI presentation layer
 
 Nothing else in the codebase imports GoogleImageFetcher, SqliteCollageRepository,
 or LocalDiskStorage by name. That isolation is what makes every other module
@@ -17,11 +17,12 @@ Startup sequence:
   3. Construct infrastructure adapters.
   4. Construct domain services (configuration-driven).
   5. Construct application use cases, injecting adapters through ports.
-  6. Build the Flask app, injecting use cases.
-  7. Run.
+  6. Build the FastAPI app, injecting use cases.
+  7. Run with uvicorn.
 """
 
 import os
+import uvicorn
 
 from config import default_config as cfg
 
@@ -50,6 +51,7 @@ from collage_maker.presentation.app import create_app
 
 
 def bootstrap() -> None:
+    """Bootstrap and run the application."""
     # 1. Filesystem bootstrap (the only os.makedirs call in the project)
     for directory in (cfg.collage_dir, cfg.download_dir):
         os.makedirs(directory, exist_ok=True)
@@ -88,18 +90,24 @@ def bootstrap() -> None:
     delete_uc = DeleteCollageUseCase(repository=repository, storage=storage)
     list_uc = ListCollagesUseCase(repository=repository)
 
-    # 6. Flask application
-    flask_app = create_app(
+    # 6. FastAPI application
+    app = create_app(
         create_uc=create_uc,
         rename_uc=rename_uc,
         delete_uc=delete_uc,
         list_uc=list_uc,
-        img_thumbnail_size=cfg.canvas_height // 4,
+        storage=storage,
+        static_dir=cfg.collage_dir,
     )
-    flask_app.config["STORAGE"] = storage  # for public_path in routes
 
-    # 7. Run
-    flask_app.run(host="127.0.0.1", port=8080, debug=True)
+    # 7. Run with uvicorn
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=8080,
+        log_level="info",
+        reload=True,  # Enable auto-reload for development
+    )
 
 
 if __name__ == "__main__":

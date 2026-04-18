@@ -1,51 +1,53 @@
 """
-Domain Events
+Domain Events using Pydantic
 
 A domain event is a record that something meaningful happened within the
 domain. Events are named in the past tense and carry only the data that
 describes what changed.
 
-These are plain frozen dataclasses — no framework, no serialisation logic.
-If an event bus or async queue is ever introduced, adapters in the
-infrastructure layer will be responsible for translating these into the
-appropriate wire format.
+These are Pydantic models with validation and serialization support.
+If an event bus or async queue is introduced, these models can be easily
+serialized to JSON or other formats.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
+from pydantic import BaseModel, Field
 
 from collage_maker.domain.common.utils import utcnow
 from collage_maker.domain.model.keyword import Keyword
 
 
-@dataclass(frozen=True, slots=True)
-class CollageCreated:
-    collage_id: str
-    name: str
-    keywords: list[Keyword]
-    occurred_at: datetime | None = None
+class CollageCreated(BaseModel):
+    """Event raised when a new collage is successfully created."""
+    
+    collage_id: str = Field(..., description="Unique identifier for the collage")
+    name: str = Field(..., description="Human-readable name of the collage")
+    keywords: list[Keyword] = Field(..., description="Keywords extracted from source text")
+    occurred_at: datetime = Field(default_factory=utcnow, description="When the event occurred")
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "occurred_at", self.occurred_at or utcnow())
-
-
-@dataclass(frozen=True, slots=True)
-class CollageRenamed:
-    collage_id: str
-    old_name: str
-    new_name: str
-    occurred_at: datetime | None = None
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "occurred_at", self.occurred_at or utcnow())
+    class Config:
+        frozen = True
 
 
-@dataclass(frozen=True, slots=True)
-class CollageDeleted:
-    collage_id: str
-    occurred_at: datetime | None = None
+class CollageRenamed(BaseModel):
+    """Event raised when a collage is renamed."""
+    
+    collage_id: str = Field(..., description="Unique identifier for the collage")
+    old_name: str = Field(..., description="Previous name")
+    new_name: str = Field(..., description="New name")
+    occurred_at: datetime = Field(default_factory=utcnow, description="When the event occurred")
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "occurred_at", self.occurred_at or utcnow())
+    class Config:
+        frozen = True
+
+
+class CollageDeleted(BaseModel):
+    """Event raised when a collage is deleted."""
+    
+    collage_id: str = Field(..., description="Unique identifier for the deleted collage")
+    occurred_at: datetime = Field(default_factory=utcnow, description="When the event occurred")
+
+    class Config:
+        frozen = True
