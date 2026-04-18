@@ -554,7 +554,7 @@ def _run_refactor(
     if not has_git and not no_backup:
         console.print(
             "[dim]Not a git repository — backups will be created in "
-            ".pyagent_backup/[/dim]\n"
+            ".pyagent/backups/[/dim]\n"
         )
 
     # Confirmation.
@@ -568,8 +568,11 @@ def _run_refactor(
             console.print("[dim]Aborted — no files were modified.[/dim]")
             return
 
-    # Write changes.
-    written = write_changes(plan, backup=not no_backup)
+    # Write changes.  For directory refactors, hand the root to the writer so
+    # backups land in a single ``<root>/.pyagent/backups/`` tree rather than
+    # being scattered next to every touched file.
+    backup_root = path if path.is_dir() else None
+    written = write_changes(plan, backup=not no_backup, root=backup_root)
 
     if written:
         console.print(

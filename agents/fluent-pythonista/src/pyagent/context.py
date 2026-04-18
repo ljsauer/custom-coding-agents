@@ -48,6 +48,12 @@ _IGNORE_DIRS = {
     "build",
     "*.egg-info",
     "migrations",
+    # pyagent's own artifact dirs — plans, batches, and consolidated backups
+    # all live under ``.pyagent/`` (see writer.create_backup).  The legacy
+    # scattered ``.pyagent_backup/`` name is kept for projects that still
+    # have them on disk from older pyagent versions.
+    ".pyagent",
+    ".pyagent_backup",
 }
 
 # Filename patterns that signal low-priority or skippable files.
