@@ -12,7 +12,18 @@ from pyagent.context import (
     score_modules,
 )
 from pyagent.memory import ConversationMemory
+from pyagent.plan_model import (
+    CodebasePlan,
+    FileNote,
+    RefactorTheme,
+    load_plan,
+    parse_codebase_plan,
+    save_plan,
+)
+from pyagent.prompts import build_batch_refactor_prompt
 from pyagent.rag import load_knowledge_base
+from pyagent.tools.refactor import check_batch_adherence
+from pyagent.writer import FileChange, RefactorPlan
 
 DOCS_PATH = Path(__file__).resolve().parent.parent / "docs"
 
@@ -158,3 +169,167 @@ class TestMemory:
         memory.add_user_message("Hello")
         memory.clear()
         assert len(memory.messages) == 0
+
+
+class TestRefactorWorkflow:
+    """Tests for the plan → execute handoff in the codebase-wide refactor flow."""
+
+    def _sample_plan(self) -> CodebasePlan:
+        return CodebasePlan(
+            assessment="Legacy type syntax and deep nesting throughout the app.",
+            themes=[
+                RefactorTheme(
+                    name="Modernize Type Annotations",
+                    description="Replace Optional[X] with X | None; List -> list; etc.",
+                    target_files=["src/app.py", "src/utils.py"],
+                ),
+                RefactorTheme(
+                    name="Introduce Early Return",
+                    description="Flatten nested conditionals.",
+                    target_files=["src/app.py"],
+                ),
+            ],
+            order_of_operations=["Modernize types first", "Then flatten conditionals"],
+            file_notes=[FileNote(path="src/app.py", note="Entry point; touch last.")],
+        )
+
+    def test_batch_system_prompt_has_valid_fence_instruction(self) -> None:
+        plan = self._sample_plan()
+        system, _user = build_batch_refactor_prompt(
+            "### FILE: x.py\n\n```python\npass\n```",
+            batch_label="1/1",
+            overall_plan=plan,
+        )
+        # Parser requires ```python fences — prompt must tell the LLM that
+        # clearly, both in the instruction and in the example.
+        assert "```python" in system
+        assert "fenced with ```python and ```" in system
+
+    def test_batch_system_prompt_not_indented(self) -> None:
+        plan = self._sample_plan()
+        system, _user = build_batch_refactor_prompt(
+            "### FILE: x.py\n\n```python\npass\n```",
+            overall_plan=plan,
+        )
+        offending = [
+            line
+            for line in system.splitlines()
+            if line.startswith("        ") and line.strip()
+        ]
+        assert not offending, (
+            f"Batch system prompt has unexpected 8-space indentation on "
+            f"{len(offending)} line(s); first: {offending[0]!r}"
+        )
+
+    def test_batch_system_prompt_places_plan_before_format_rules(self) -> None:
+        plan = self._sample_plan()
+        system, _user = build_batch_refactor_prompt(
+            "### FILE: x.py\n\n```python\npass\n```",
+            overall_plan=plan,
+        )
+        plan_idx = system.index("Overall Refactoring Plan")
+        fmt_idx = system.index("Output Format")
+        assert plan_idx < fmt_idx
+
+    def test_batch_system_prompt_embeds_theme_names(self) -> None:
+        plan = self._sample_plan()
+        system, _user = build_batch_refactor_prompt(
+            "### FILE: x.py\n\n```python\npass\n```",
+            overall_plan=plan,
+        )
+        for theme in plan.themes:
+            assert theme.name in system
+
+    def test_batch_prompt_handles_missing_plan(self) -> None:
+        # Must not raise when no plan is provided.
+        system, _user = build_batch_refactor_prompt(
+            "### FILE: x.py\n\n```python\npass\n```",
+            overall_plan=None,
+        )
+        assert "Overall Refactoring Plan" in system
+
+    def test_codebase_plan_to_markdown_contains_themes(self) -> None:
+        plan = self._sample_plan()
+        md = plan.to_markdown()
+        for theme in plan.themes:
+            assert theme.name in md
+        assert "Order of Operations" in md
+        assert "File-Specific Notes" in md
+
+    def test_parse_codebase_plan_handles_json_fence(self) -> None:
+        response = (
+            "Here is the plan.\n\n"
+            "## Overall Assessment\n\nLots of legacy typing.\n\n"
+            "```json\n"
+            '{\n'
+            '  "assessment": "Lots of legacy typing.",\n'
+            '  "themes": [\n'
+            '    {"name": "Modernize Type Annotations", '
+            '"description": "X | None", "target_files": ["a.py"]}\n'
+            '  ],\n'
+            '  "order_of_operations": [],\n'
+            '  "file_notes": [],\n'
+            '  "recommended_dependencies": []\n'
+            '}\n'
+            "```\n"
+        )
+        plan = parse_codebase_plan(response)
+        assert plan.theme_names() == ["Modernize Type Annotations"]
+        assert plan.themes[0].target_files == ["a.py"]
+
+    def test_parse_codebase_plan_falls_back_on_invalid_json(self) -> None:
+        response = "No structured block here — just some prose about the codebase."
+        plan = parse_codebase_plan(response)
+        assert plan.themes == []
+        assert response in plan.assessment
+
+    def test_save_and_load_plan_roundtrip(self, tmp_path: Path) -> None:
+        plan = self._sample_plan()
+        save_plan(plan, tmp_path)
+        loaded = load_plan(tmp_path)
+        assert loaded is not None
+        assert loaded.theme_names() == plan.theme_names()
+        assert loaded.assessment == plan.assessment
+        assert (tmp_path / ".pyagent" / "last_plan.md").exists()
+
+    def test_load_plan_returns_none_when_missing(self, tmp_path: Path) -> None:
+        assert load_plan(tmp_path) is None
+
+    def test_check_batch_adherence_detects_missing_themes(self) -> None:
+        plan = self._sample_plan()
+        batch = RefactorPlan(
+            summary="Cleaned up variable names and fixed a bug.",
+            changes=[
+                FileChange(
+                    path=Path("src/app.py"),
+                    original="x = 1\n",
+                    refactored="x = 2\n",
+                    explanation="Updated the value.",
+                )
+            ],
+        )
+        report = check_batch_adherence(batch, plan, batch_label="1/1")
+        assert report.themes_referenced == []
+        assert set(report.themes_missing) == {t.name for t in plan.themes}
+        assert report.followed_plan is False
+
+    def test_check_batch_adherence_detects_applied_themes(self) -> None:
+        plan = self._sample_plan()
+        batch = RefactorPlan(
+            summary=(
+                "Applied Modernize Type Annotations across the batch and "
+                "introduced an early return in app.py."
+            ),
+            changes=[
+                FileChange(
+                    path=Path("src/app.py"),
+                    original="x = 1\n",
+                    refactored="x: int = 1\n",
+                    explanation="Introduce Early Return and typed the binding.",
+                )
+            ],
+        )
+        report = check_batch_adherence(batch, plan, batch_label="1/1")
+        assert set(report.themes_referenced) == {t.name for t in plan.themes}
+        assert report.themes_missing == []
+        assert report.followed_plan is True
