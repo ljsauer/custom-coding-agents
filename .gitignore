@@ -5,5 +5,8 @@
 .env
 .venv
 
+# Project artifacts
+*.pyagent_backup/
+
 # Python
 __pycache__

@@ -98,6 +98,63 @@ Keep your answers focused on the topic and ask the user for more detail or clari
 unsure how to proceed or what they are asking of you.
 """
 
+CODEBASE_PLAN_SYSTEM = """\
+{base}
+
+You are PLANNING a CODEBASE-WIDE REFACTORING operation.
+
+Given the structural summary of a Python codebase, produce a clear and actionable
+refactoring plan that will guide batch-by-batch refactoring of every file.
+
+## Output Format
+
+1. **Overall Assessment** — Identify the main issues and improvement opportunities
+   you can infer from the codebase structure.  Be specific about patterns that
+   appear to repeat across multiple files.
+
+2. **Refactoring Themes** — List the named patterns/transformations to apply.
+   For each theme:
+   - Name it explicitly (e.g. "Replace `Optional[X]` with `X | None`").
+   - Describe what to look for and what to change it to.
+   - List the file names most likely affected.
+
+3. **Order of Operations** — If some changes must happen before others (e.g.
+   extract a shared utility before updating all callers), note it here.
+
+4. **File-Specific Notes** — Call out any files with unique concerns by name.
+
+Keep the plan concise but actionable.  Every point must be grounded in what
+you can see in the codebase structure — avoid generic advice.\
+"""
+
+BATCH_REFACTOR_SYSTEM = """\
+        {base}
+        
+        You are performing a CODEBASE-WIDE REFACTORING as part of a coordinated
+        multi-pass operation.  You have been given a batch of files to refactor.
+        Apply the **Overall Refactoring Plan** consistently across all files in
+        this batch.
+        
+        ## Output Format
+        You MUST structure your response exactly as follows:
+        
+        1. Start with a brief SUMMARY of the changes made in this batch.
+        
+        2. For EACH file you are refactoring, output a section with this exact format:
+        
+        ### FILE: <filename>
+        **Changes:** Brief description of what changed in this file.
+        
+        <the complete refactored source code for this file>
+        
+        CRITICAL RULES:
+        The code block must contain the COMPLETE file content, not a partial diff.
+        Every file section must start with exactly ### FILE: followed by the filename.
+        The code block must be fenced with python and .
+        Do not omit unchanged parts of the file with comments like "# ... rest unchanged".
+        Do NOT refactor files that were not provided to you.
+        If a file needs no changes, omit it entirely — do not include an empty section.
+    """
 
 def build_review_prompt(
     code: str,
@@ -105,7 +162,7 @@ def build_review_prompt(
     filename: str = "",
     context: str = "",
     user_request: str = "",
-) -> tuple[str, str]:
+    ) -> tuple[str, str]:
     """Build the system and user prompts for a code review.
 
     Args:
@@ -130,14 +187,13 @@ def build_review_prompt(
 
     return system, "\n".join(user_parts)
 
-
 def build_refactor_prompt(
     code: str,
     *,
     filename: str = "",
     context: str = "",
     user_request: str = "",
-) -> tuple[str, str]:
+    ) -> tuple[str, str]:
     """Build the system and user prompts for a refactoring operation.
 
     Args:
@@ -167,14 +223,13 @@ def build_refactor_prompt(
 
     return system, "\n".join(user_parts)
 
-
 def build_explain_prompt(
     code: str,
     *,
     filename: str = "",
     context: str = "",
     user_request: str = "",
-) -> tuple[str, str]:
+    ) -> tuple[str, str]:
     """Build the system and user prompts for code explanation.
 
     Args:
@@ -204,7 +259,7 @@ def build_chat_prompt(
     *,
     context: str = "",
     codebase_summary: str = "",
-) -> str:
+    ) -> str:
     """Build the system prompt for a free-form chat session.
 
     Args:
@@ -220,3 +275,73 @@ def build_chat_prompt(
     if context:
         parts.append(f"\n\n## Reference Standards\n\n{context}")
     return "\n".join(parts)
+
+def build_codebase_plan_prompt(
+    structural_summary: str,
+    *,
+    context: str = "",
+    user_request: str = "",
+    ) -> tuple[str, str]:
+    """Build prompts for the codebase-wide refactoring planning phase.
+
+    Args:
+        structural_summary: The codebase structural summary from
+            ``CodebaseContext.summary()``.
+        context: Retrieved documentation context from RAG.
+        user_request: Optional focus for the refactoring plan.
+
+    Returns:
+        A tuple of ``(system_prompt, user_message)``.
+    """
+    system = CODEBASE_PLAN_SYSTEM.format(base=SYSTEM_BASE)
+    if context:
+        system += f"\n\n## Reference Standards\n\n{context}"
+
+    user_parts = [
+        f"Here is the structural summary of the codebase:\n\n```\n{structural_summary}\n```"
+    ]
+    if user_request:
+        user_parts.append(f"\nFocus the refactoring plan on: {user_request}")
+    else:
+        user_parts.append(
+            "\nProduce a comprehensive refactoring plan covering all opportunities "
+            "you identify in the codebase."
+        )
+
+    return system, "\n".join(user_parts)
+
+def build_batch_refactor_prompt(
+    batch_code: str,
+    *,
+    batch_label: str = "",
+    overall_plan: str = "",
+    context: str = "",
+    user_request: str = "",
+    ) -> tuple[str, str]:
+    """Build prompts for refactoring a batch of files in codebase-wide mode.
+
+    Args:
+        batch_code: Pre-formatted string containing one or more
+            ``### FILE: <name>`` sections with source code blocks.
+        batch_label: Human-readable batch identifier (e.g. ``"1/3"``).
+        overall_plan: The overall refactoring strategy from the planning phase.
+        context: Retrieved documentation context from RAG.
+        user_request: Specific refactoring instructions.
+
+    Returns:
+        A tuple of ``(system_prompt, user_message)``.
+    """
+    system = BATCH_REFACTOR_SYSTEM.format(base=SYSTEM_BASE)
+    if overall_plan:
+        system += f"\n\n## Overall Refactoring Plan\n\n{overall_plan}"
+    if context:
+        system += f"\n\n## Reference Standards\n\n{context}"
+
+    label = f" (batch {batch_label})" if batch_label else ""
+    user_parts = [
+        f"Refactor the following Python files{label}:\n\n{batch_code}"
+    ]
+    if user_request:
+        user_parts.append(f"\nAdditional focus: {user_request}")
+
+    return system, "\n".join(user_parts)
