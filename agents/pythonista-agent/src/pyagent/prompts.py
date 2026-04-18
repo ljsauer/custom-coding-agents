@@ -120,6 +120,9 @@ refactoring plan that will guide batch-by-batch refactoring of every file.
 
 3. **Order of Operations** — If some changes must happen before others (e.g.
    extract a shared utility before updating all callers), note it here.
+   Note: the final operations must always be updating the project's README with
+   any relevant additions or changes to the existing information there, as well
+   as the addition of information that should generally be in README if it isn't already.
 
 4. **File-Specific Notes** — Call out any files with unique concerns by name.
 
