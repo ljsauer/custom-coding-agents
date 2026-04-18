@@ -90,9 +90,32 @@ def refactor(
         "-m",
         help="Override the default model.",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show proposed changes without writing files.",
+    ),
+    no_confirm: bool = typer.Option(
+        False,
+        "--no-confirm",
+        "-y",
+        help="Apply changes without confirmation prompt.",
+    ),
+    no_backup: bool = typer.Option(
+        False,
+        "--no-backup",
+        help="Skip creating backup files before writing.",
+    ),
 ) -> None:
-    """Refactor Python code using named patterns from the playbook."""
-    _run_tool("refactor", path, instructions=instructions, model_override=model)
+    """Refactor Python code and write changes to files."""
+    _run_refactor(
+        path,
+        instructions=instructions,
+        model_override=model,
+        dry_run=dry_run,
+        no_confirm=no_confirm,
+        no_backup=no_backup,
+    )
 
 
 @app.command()
@@ -308,6 +331,197 @@ def _run_tool(
 
     console.print()
     console.print(Markdown(result))
+
+
+def _run_refactor(
+    path: Path,
+    *,
+    instructions: str = "",
+    model_override: str = "",
+    dry_run: bool = False,
+    no_confirm: bool = False,
+    no_backup: bool = False,
+) -> None:
+    """Execute the refactoring workflow with diff review and file writing.
+
+    Flow:
+    1. Read target file(s) and build context.
+    2. Send to LLM for refactoring.
+    3. Parse structured response into a RefactorPlan.
+    4. Display diffs for user review.
+    5. On confirmation, write changes to disk.
+
+    Args:
+        path: Path to the target file or directory.
+        instructions: Refactoring instructions.
+        model_override: Optional model override.
+        dry_run: If True, show changes but don't write.
+        no_confirm: If True, skip confirmation prompt.
+        no_backup: If True, skip creating backup files.
+    """
+    from rich.syntax import Syntax
+
+    from pyagent.writer import has_uncommitted_changes, is_git_repo, write_changes
+
+    agent = _create_agent(model_override=model_override)
+
+    # Build the file map and originals for the refactor plan.
+    file_map: dict[str, Path] = {}
+    originals: dict[str, str] = {}
+
+    if path.is_dir():
+        from pyagent.context import assemble_context
+
+        with console.status("[bold]Indexing codebase..."):
+            ctx = agent.load_codebase(str(path))
+
+        console.print(
+            f"[dim]Indexed {ctx.file_count} files (~{ctx.total_tokens:,} tokens)[/dim]"
+        )
+
+        with console.status("[bold]Selecting relevant files..."):
+            code = assemble_context(ctx, query=instructions)
+
+        # Build file map from all source modules in context.
+        for mod_path, module in ctx.source_modules.items():
+            rel = str(
+                mod_path.relative_to(ctx.root)
+                if mod_path.is_relative_to(ctx.root)
+                else mod_path
+            )
+            file_map[rel] = mod_path
+            file_map[mod_path.name] = mod_path
+            originals[rel] = module.source
+            originals[mod_path.name] = module.source
+
+        filename = str(path)
+
+    elif path.is_file():
+        code = path.read_text(encoding="utf-8")
+        filename = path.name
+        resolved = path.resolve()
+        file_map[path.name] = resolved
+        file_map[str(path)] = resolved
+        originals[path.name] = code
+        originals[str(path)] = code
+
+        # Load surrounding context.
+        package_root = _find_package_root(path)
+        if package_root and package_root != path:
+            with console.status("[bold]Loading package context..."):
+                agent.load_codebase(str(package_root))
+    else:
+        err_console.print(f"[red]Invalid path: {path}[/red]")
+        raise typer.Exit(1)
+
+    # Run the refactoring.
+    with console.status("[bold]Refactoring..."):
+        plan = asyncio.run(
+            agent.refactor_with_plan(
+                file_map=file_map,
+                originals=originals,
+                code=code,
+                filename=filename,
+                instructions=instructions,
+            )
+        )
+
+    # Display results.
+    if plan.summary:
+        console.print()
+        console.print(
+            Panel(Markdown(plan.summary), title="Summary", border_style="blue")
+        )
+
+    if plan.files_changed == 0:
+        console.print("\n[yellow]No changes proposed.[/yellow]")
+        return
+
+    # Show diffs for each changed file.
+    console.print(
+        f"\n[bold]{plan.files_changed} file(s) with proposed changes:[/bold]\n"
+    )
+
+    for change in plan.changes:
+        if not change.has_changes:
+            continue
+
+        rel_path = change.path.name
+        console.print(
+            Panel(
+                f"[bold]{rel_path}[/bold]  {change.stat_summary}",
+                border_style="cyan",
+                expand=False,
+            )
+        )
+
+        if change.explanation:
+            console.print(f"  [dim]{change.explanation}[/dim]\n")
+
+        diff_text = change.diff
+        if diff_text:
+            console.print(
+                Syntax(diff_text, "diff", theme="monokai", line_numbers=False)
+            )
+        console.print()
+
+    # Dry run — stop here.
+    if dry_run:
+        console.print("[yellow]Dry run — no files were modified.[/yellow]")
+        return
+
+    # Safety checks before writing.
+    has_git = is_git_repo(path)
+    dirty_files: list[str] = []
+
+    if has_git:
+        for change in plan.changes:
+            if change.has_changes and has_uncommitted_changes(change.path):
+                dirty_files.append(change.path.name)
+
+    if dirty_files:
+        console.print(
+            Panel(
+                "[yellow]Warning:[/yellow] The following files have "
+                "uncommitted git changes:\n"
+                + "\n".join(f"  • {f}" for f in dirty_files)
+                + "\n\nBackups will be created regardless of --no-backup.",
+                border_style="yellow",
+            )
+        )
+        # Force backups for dirty files.
+        no_backup = False
+
+    if not has_git and not no_backup:
+        console.print(
+            "[dim]Not a git repository — backups will be created in "
+            ".pyagent_backup/[/dim]\n"
+        )
+
+    # Confirmation.
+    if not no_confirm:
+        choice = Prompt.ask(
+            "[bold]Apply these changes?[/bold]",
+            choices=["yes", "no", "y", "n"],
+            default="no",
+        )
+        if choice.lower() not in {"yes", "y"}:
+            console.print("[dim]Aborted — no files were modified.[/dim]")
+            return
+
+    # Write changes.
+    written = write_changes(plan, backup=not no_backup)
+
+    if written:
+        console.print(
+            Panel(
+                "\n".join(f"  ✓ {p.name}" for p in written),
+                title=f"[green]{len(written)} file(s) updated[/green]",
+                border_style="green",
+            )
+        )
+    else:
+        console.print("[yellow]No files were written.[/yellow]")
 
 
 def _find_package_root(file_path: Path) -> Path | None:

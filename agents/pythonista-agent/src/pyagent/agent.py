@@ -122,7 +122,9 @@ class Agent:
         filename: str = "",
         instructions: str = "",
     ) -> str:
-        """Run a refactoring pass.
+        """Run a refactoring pass and return the raw response.
+
+        For file-writing workflows, use ``refactor_with_plan`` instead.
 
         Args:
             code: Python source code to refactor.
@@ -130,7 +132,7 @@ class Agent:
             instructions: Specific refactoring focus.
 
         Returns:
-            The refactored code with explanation.
+            The raw refactoring response text.
         """
         result = await self._refactorer.execute(
             code,
@@ -145,6 +147,38 @@ class Agent:
             result.metadata.get("output_tokens") if result.metadata else "?",
         )
         return result.content
+
+    async def refactor_with_plan(
+        self,
+        file_map: dict[str, "Path"],
+        originals: dict[str, str],
+        code: str,
+        *,
+        filename: str = "",
+        instructions: str = "",
+    ) -> "RefactorPlan":
+        """Run a refactoring pass and return a structured plan.
+
+        The plan contains per-file diffs that can be reviewed and applied.
+
+        Args:
+            file_map: Mapping of filename strings to absolute file paths.
+            originals: Mapping of filename strings to original source content.
+            code: The assembled code string sent to the LLM.
+            filename: Label for the code being refactored.
+            instructions: Specific refactoring focus.
+
+        Returns:
+            A ``RefactorPlan`` with parsed file changes.
+        """
+        from pyagent.tools.refactor import parse_refactor_response
+
+        raw_response = await self.refactor(
+            code,
+            filename=filename,
+            instructions=instructions,
+        )
+        return parse_refactor_response(raw_response, file_map, originals)
 
     async def explain(
         self,
