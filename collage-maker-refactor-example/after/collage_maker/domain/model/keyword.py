@@ -1,28 +1,36 @@
-# domain/model/keyword.py
-#
-# Keyword — Value Object
-#
-# A keyword is a meaningful word extracted from source text that drives both
-# the wordcloud composition and the reference-image search.
-#
-# Value objects are immutable and defined entirely by their value.
-# Two Keywords with the same text are equal regardless of object identity.
+"""
+Keyword — Pydantic Value Object
+
+A keyword is a meaningful word extracted from source text that drives both
+the wordcloud composition and the reference-image search.
+
+Value objects are immutable and defined entirely by their value.
+Two Keywords with the same text are equal regardless of object identity.
+"""
 
 from __future__ import annotations
-from dataclasses import dataclass
+from pydantic import BaseModel, Field, validator
 
 
-@dataclass(frozen=True)
-class Keyword:
-    text: str
+class Keyword(BaseModel):
+    """A normalized keyword extracted from source text."""
+    
+    text: str = Field(..., description="The keyword text, normalized to lowercase")
 
-    def __post_init__(self) -> None:
-        if not self.text or not self.text.strip():
+    @validator('text')
+    def normalize_and_validate_text(cls, v):
+        if not v or not v.strip():
             raise ValueError(
                 "A keyword must contain at least one non-whitespace character."
             )
-        # Normalise to lowercase so 'Apple' and 'apple' are the same keyword.
-        object.__setattr__(self, "text", self.text.strip().lower())
+        # Normalize to lowercase so 'Apple' and 'apple' are the same keyword.
+        return v.strip().lower()
 
     def __str__(self) -> str:
         return self.text
+    
+    def __hash__(self) -> int:
+        return hash(self.text)
+
+    class Config:
+        frozen = True

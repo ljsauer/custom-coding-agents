@@ -1,27 +1,30 @@
-# domain/model/canvas.py
-#
-# Canvas — Value Object   (the surface dimensions of a collage)
-# Rectangle — Value Object (axis-aligned bounding box used during layout)
-#
-# These are pure geometric concepts belonging to the composition domain.
-# They carry no I/O, no framework references, and no mutable global state.
+"""
+Canvas — Pydantic Value Object   (the surface dimensions of a collage)
+Rectangle — Dataclass (axis-aligned bounding box used during layout)
+
+Canvas is a pure geometric concept with immutable dimensions.
+Rectangle is intentionally mutable for the placement algorithm.
+"""
 
 from __future__ import annotations
 from dataclasses import dataclass
+from pydantic import BaseModel, Field, validator
 
 
-@dataclass(frozen=True)
-class Canvas:
+class Canvas(BaseModel):
     """The rectangular surface onto which a collage is composed."""
 
-    width: int
-    height: int
+    width: int = Field(..., description="Canvas width in pixels", gt=0)
+    height: int = Field(..., description="Canvas height in pixels", gt=0)
 
-    def __post_init__(self) -> None:
-        if self.width <= 0 or self.height <= 0:
-            raise ValueError(
-                f"Canvas dimensions must be positive; got ({self.width}, {self.height})."
-            )
+    @validator('width', 'height')
+    def validate_positive_dimensions(cls, v):
+        if v <= 0:
+            raise ValueError("Canvas dimensions must be positive")
+        return v
+
+    class Config:
+        frozen = True
 
 
 @dataclass
