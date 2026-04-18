@@ -1,27 +1,26 @@
-# domain/services/composition.py
-#
-# CompositionService — Domain Service
-#
-# Lays out a set of subject images on a canvas without overlap, then
-# composites them over a wordcloud background. Returns the finished collage
-# as a numpy array.
-#
-# Classification: Domain Service
-#   - Encapsulates the layout and blending rules that define what a valid
-#     collage composition looks like.
-#   - Accepts and returns numpy arrays and domain value objects (Canvas,
-#     Rectangle, Keyword). No file paths, no HTTP, no DB.
-#   - cv2, numpy, and wordcloud are computation libraries used as
-#     pure functions here — they are not infrastructure adapters.
-#
-# Replaces: the layout/blending portions of app/computer_vision/collage_generator.py
-# The I/O portions of CollageGenerator (image fetching, disk writes) have been
-# moved to their correct layers (IReferenceImageSource, ICollageStorage).
+"""
+CompositionService — Domain Service
+
+Lays out a set of subject images on a canvas without overlap, then
+composites them over a wordcloud background. Returns the finished collage
+as a numpy array.
+
+Classification: Domain Service
+  - Encapsulates the layout and blending rules that define what a valid
+    collage composition looks like.
+  - Accepts and returns numpy arrays and domain value objects (Canvas,
+    Rectangle, Keyword). No file paths, no HTTP, no DB.
+  - cv2, numpy, and wordcloud are computation libraries used as
+    pure functions here — they are not infrastructure adapters.
+
+Replaces: the layout/blending portions of app/computer_vision/collage_generator.py
+The I/O portions of CollageGenerator (image fetching, disk writes) have been
+moved to their correct layers (IReferenceImageSource, ICollageStorage).
+"""
 
 from __future__ import annotations
 
 from random import choice, randint
-from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -46,7 +45,7 @@ class CompositionService:
     def __init__(
         self,
         canvas: Canvas,
-        colormaps: List[str],
+        colormaps: list[str],
         max_word_font_size: int = 175,
     ) -> None:
         self._canvas = canvas
@@ -59,8 +58,8 @@ class CompositionService:
 
     def compose(
         self,
-        subjects: List[np.ndarray],
-        keywords: List[Keyword],
+        subjects: list[np.ndarray],
+        keywords: list[Keyword],
     ) -> np.ndarray:
         """
         Place each subject image on the canvas without overlap, render a
@@ -91,12 +90,12 @@ class CompositionService:
 
     def _place_subjects(
         self,
-        subjects: List[np.ndarray],
+        subjects: list[np.ndarray],
         background: np.ndarray,
-    ) -> Tuple[List[np.ndarray], List[Rectangle]]:
+    ) -> tuple[list[np.ndarray], list[Rectangle]]:
         H, W = background.shape[:2]
-        placed: List[np.ndarray] = []
-        rectangles: List[Rectangle] = []
+        placed: list[np.ndarray] = []
+        rectangles: list[Rectangle] = []
 
         for i, subject in enumerate(subjects):
             h, w = subject.shape[:2]
@@ -121,14 +120,14 @@ class CompositionService:
         return placed, rectangles
 
     @staticmethod
-    def _has_collisions(rect: Rectangle, others: List[Rectangle]) -> bool:
+    def _has_collisions(rect: Rectangle, others: list[Rectangle]) -> bool:
         return any(rect.collides_with(other) for other in others)
 
     @staticmethod
     def _draw_subjects(
         background: np.ndarray,
-        subjects: List[np.ndarray],
-        rectangles: List[Rectangle],
+        subjects: list[np.ndarray],
+        rectangles: list[Rectangle],
     ) -> None:
         for rect, subject in zip(rectangles, subjects):
             x1, y1, x2, y2 = rect.x1, rect.y1, rect.x2, rect.y2
@@ -140,7 +139,7 @@ class CompositionService:
                         alpha_s * subject[:, :, c]
                         + alpha_l * background[y1:y2, x1:x2, c]
                     )
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 # Mismatched shapes can occur when subjects are near the edge;
                 # skip rather than crash.
                 continue
@@ -148,7 +147,7 @@ class CompositionService:
     def _render_wordcloud(
         self,
         mask: np.ndarray,
-        keywords: List[Keyword],
+        keywords: list[Keyword],
     ) -> np.ndarray:
         colormap = choice(self._colormaps)
         word_string = " ".join(kw.text for kw in keywords)

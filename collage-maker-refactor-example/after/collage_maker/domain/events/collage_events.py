@@ -19,35 +19,64 @@ from collage_maker.domain.common.utils import utcnow
 from collage_maker.domain.model.keyword import Keyword
 
 
-class CollageCreated(BaseModel):
+class DomainEvent(BaseModel):
+    """Base class for all domain events with common timestamp behavior."""
+    
+    occurred_at: datetime = Field(
+        default_factory=utcnow, 
+        description="When the event occurred",
+        frozen=True
+    )
+
+    class Config:
+        frozen = True
+
+
+class CollageCreated(DomainEvent):
     """Event raised when a new collage is successfully created."""
     
     collage_id: str = Field(..., description="Unique identifier for the collage")
     name: str = Field(..., description="Human-readable name of the collage")
     keywords: list[Keyword] = Field(..., description="Keywords extracted from source text")
-    occurred_at: datetime = Field(default_factory=utcnow, description="When the event occurred")
+    image_count: int = Field(..., description="Number of images composed in the collage", ge=0)
+    processing_time_seconds: float = Field(
+        default=0.0, 
+        description="Time taken to create the collage",
+        ge=0.0
+    )
 
-    class Config:
-        frozen = True
 
-
-class CollageRenamed(BaseModel):
+class CollageRenamed(DomainEvent):
     """Event raised when a collage is renamed."""
     
     collage_id: str = Field(..., description="Unique identifier for the collage")
     old_name: str = Field(..., description="Previous name")
     new_name: str = Field(..., description="New name")
-    occurred_at: datetime = Field(default_factory=utcnow, description="When the event occurred")
-
-    class Config:
-        frozen = True
 
 
-class CollageDeleted(BaseModel):
+class CollageDeleted(DomainEvent):
     """Event raised when a collage is deleted."""
     
     collage_id: str = Field(..., description="Unique identifier for the deleted collage")
-    occurred_at: datetime = Field(default_factory=utcnow, description="When the event occurred")
+    name: str = Field(..., description="Name of the deleted collage for audit purposes")
 
-    class Config:
-        frozen = True
+
+class CollageProcessingStarted(DomainEvent):
+    """Event raised when collage processing begins."""
+    
+    collage_id: str = Field(..., description="Unique identifier for the collage being processed")
+    keyword_count: int = Field(..., description="Number of keywords to process", ge=1)
+    estimated_duration_seconds: float = Field(
+        default=30.0,
+        description="Estimated processing time",
+        ge=1.0
+    )
+
+
+class CollageProcessingFailed(DomainEvent):
+    """Event raised when collage processing fails."""
+    
+    collage_id: str = Field(..., description="Unique identifier for the failed collage")
+    error_type: str = Field(..., description="Type of error that occurred")
+    error_message: str = Field(..., description="Detailed error message")
+    keywords_processed: int = Field(default=0, description="Number of keywords processed before failure", ge=0)
