@@ -13,10 +13,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import Engine, func, or_
+from sqlalchemy import Engine, func
 from sqlalchemy.exc import SQLAlchemyError
 
-from collage_maker.domain.common.utils import utcnow
 from collage_maker.domain.model.collage import Collage
 from collage_maker.domain.model.keyword import Keyword
 from collage_maker.domain.ports.collage_repository import ICollageRepository
@@ -124,7 +123,7 @@ class SqliteCollageRepository(ICollageRepository):
     def find_recent(self, hours: int = 24) -> list[Collage]:
         """Find collages created within the specified number of hours."""
         try:
-            cutoff_time = utcnow() - timedelta(hours=hours)
+            cutoff_time = datetime.now(datetime.UTC) - timedelta(hours=hours)
             with make_session(self._engine) as session:
                 rows = (
                     session.query(CollageRow)
@@ -206,8 +205,8 @@ class SqliteCollageRepository(ICollageRepository):
                 id=row.id,
                 name=row.name or "Unnamed Collage",
                 keywords=[Keyword(text="unknown")],
-                created_at=row.created_at or utcnow(),
-                updated_at=row.updated_at or utcnow(),
+                created_at=row.created_at or datetime.now(datetime.UTC),
+                updated_at=row.updated_at or datetime.now(datetime.UTC),
             )
 
     @staticmethod

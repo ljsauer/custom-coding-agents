@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime as dt
 
-from collage_maker.domain.common.utils import utcnow
 from collage_maker.domain.exceptions import (
     CollageCreationError,
     InvalidCollageNameError,
@@ -35,8 +34,8 @@ class Collage:
     id: str
     keywords: list[Keyword]
     name: str
-    created_at: datetime = field(default_factory=utcnow)
-    updated_at: datetime = field(default_factory=utcnow)
+    created_at: dt = field(default_factory=lambda: dt.now(dt.UTC))
+    updated_at: dt = field(default_factory=lambda: dt.now(dt.UTC))
     # Additional metadata for enhanced functionality
     source_text_length: int = field(default=0)
     processing_time_seconds: float = field(default=0.0)
@@ -145,7 +144,7 @@ class Collage:
             )
         
         self.name = clean_name
-        self.updated_at = utcnow()
+        self.updated_at = dt.now(dt.UTC)
 
     def add_metadata(self, image_count: int, processing_time: float) -> None:
         """Add processing metadata after collage creation."""
@@ -156,7 +155,7 @@ class Collage:
         
         self.image_count = image_count
         self.processing_time_seconds = processing_time
-        self.updated_at = utcnow()
+        self.updated_at = dt.now(dt.UTC)
 
     # ------------------------------------------------------------------
     # Query Methods (for templates and serializers)
@@ -191,7 +190,7 @@ class Collage:
 
     def is_recent(self, hours: int = 24) -> bool:
         """Check if collage was created within the specified hours."""
-        age = utcnow() - self.created_at
+        age = dt.now(dt.UTC) - self.created_at
         return age.total_seconds() < (hours * 3600)
 
     # ------------------------------------------------------------------

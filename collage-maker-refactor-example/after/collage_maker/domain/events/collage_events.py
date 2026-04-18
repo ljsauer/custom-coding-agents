@@ -12,18 +12,17 @@ serialized to JSON or other formats.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime as dt
 from pydantic import BaseModel, Field
 
-from collage_maker.domain.common.utils import utcnow
 from collage_maker.domain.model.keyword import Keyword
 
 
 class DomainEvent(BaseModel):
     """Base class for all domain events with common timestamp behavior."""
     
-    occurred_at: datetime = Field(
-        default_factory=utcnow, 
+    occurred_at: dt = Field(
+        default_factory=lambda: dt.now(dt.UTC),
         description="When the event occurred",
         frozen=True
     )

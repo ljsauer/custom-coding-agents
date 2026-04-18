@@ -11,11 +11,10 @@ directions so that the rest of the system never sees SQLAlchemy types.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from collage_maker.domain.common.utils import utcnow
 from collage_maker.infrastructure.persistence.database import Base
 
 
@@ -34,10 +33,10 @@ class CollageRow(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     keywords_csv: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
+        DateTime(timezone=True), default=datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        DateTime(timezone=True), default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc)
     )
 
     def __repr__(self) -> str:
