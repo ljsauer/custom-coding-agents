@@ -5,6 +5,9 @@ It wires together the LLM client, tools, RAG knowledge base, memory, and
 codebase context into a coherent reasoning loop.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from anthropic import AsyncAnthropic
 
@@ -17,6 +20,13 @@ from pyagent.rag import KnowledgeBase, load_knowledge_base
 from pyagent.tools.explainer import ExplainTool
 from pyagent.tools.refactor import RefactorTool
 from pyagent.tools.reviewer import ReviewTool
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+    from pyagent.plan_model import CodebasePlan
+    from pyagent.writer import RefactorPlan
 
 logger = get_logger(__name__)
 
@@ -181,7 +191,9 @@ class Agent:
         return parse_refactor_response(raw_response, file_map, originals)
 
 
-    async def plan_codebase_refactor(self, *, instructions: str = "") -> str:
+    async def plan_codebase_refactor(
+        self, *, instructions: str = ""
+    ) -> "CodebasePlan":
         """Generate an overall refactoring plan for the loaded codebase.
 
         The LLM analyses the full structural summary of the codebase (not
@@ -192,7 +204,7 @@ class Agent:
             instructions: Optional focus or constraints for the plan.
 
         Returns:
-            A text string describing the overall refactoring strategy.
+            A :class:`CodebasePlan` describing the overall refactoring strategy.
 
         Raises:
             RuntimeError: If no codebase has been loaded.
@@ -206,7 +218,9 @@ class Agent:
             user_request=instructions,
             knowledge_base=self._kb,
         )
-        logger.info("Codebase plan generated (%d chars)", len(plan))
+        logger.info(
+            "Codebase plan generated: %d theme(s)", len(plan.themes)
+        )
         return plan
 
     async def refactor_codebase(
@@ -242,7 +256,12 @@ class Agent:
         from pathlib import Path
 
         from pyagent.context import batch_files
-        from pyagent.tools.refactor import parse_refactor_response
+        from pyagent.plan_model import save_plan
+        from pyagent.tools.refactor import (
+            BatchAdherenceReport,
+            check_batch_adherence,
+            parse_refactor_response,
+        )
         from pyagent.writer import RefactorPlan
 
         if self._codebase is None:
@@ -255,13 +274,28 @@ class Agent:
             on_progress("Generating overall refactoring strategy...")
         overall_plan = await self.plan_codebase_refactor(instructions=instructions)
 
+        # Persist the plan so it survives restarts and can be inspected.
+        artifacts_root = self._codebase.root
+        try:
+            save_plan(overall_plan, artifacts_root)
+        except OSError as exc:
+            logger.warning("Could not persist plan to %s: %s", artifacts_root, exc)
+
+        batches_dir = artifacts_root / ".pyagent" / "batches"
+        try:
+            batches_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning("Could not create batches dir %s: %s", batches_dir, exc)
+            batches_dir = None  # type: ignore[assignment]
+
         # Phase 2: Batch all source files and refactor each batch.
         batches = batch_files(self._codebase, token_budget=budget)
         if not batches:
             return RefactorPlan(summary="No refactorable files found.")
 
-        combined_plan = RefactorPlan(summary=overall_plan)
+        combined_plan = RefactorPlan(summary=overall_plan.to_markdown())
         total_batches = len(batches)
+        adherence_reports: list[BatchAdherenceReport] = []
 
         for batch_idx, batch_modules in enumerate(batches):
             batch_num = batch_idx + 1
@@ -303,6 +337,59 @@ class Agent:
             )
 
             batch_plan = parse_refactor_response(result.content, file_map, originals)
+            report = check_batch_adherence(
+                batch_plan, overall_plan, batch_label=batch_label
+            )
+
+            # One-shot retry if the batch referenced no themes at all.
+            if overall_plan.themes and not report.followed_plan:
+                if on_progress:
+                    on_progress(
+                        f"Batch {batch_label} ignored the plan — retrying once..."
+                    )
+                logger.warning(
+                    "Batch %s ignored plan themes; issuing one retry", batch_label
+                )
+                reminder = (
+                    "REMINDER: your previous attempt did not reference any Theme "
+                    "from the Overall Refactoring Plan. Re-read the plan and "
+                    "refactor this batch applying ONLY plan-directed changes. "
+                    "In your SUMMARY, explicitly name every Theme you applied."
+                )
+                retry = await self._refactorer.execute_batch(
+                    batch_code,
+                    batch_label=batch_label,
+                    overall_plan=overall_plan,
+                    user_request=instructions,
+                    knowledge_base=self._kb,
+                    reminder_prefix=reminder,
+                )
+                retry_plan = parse_refactor_response(
+                    retry.content, file_map, originals
+                )
+                retry_report = check_batch_adherence(
+                    retry_plan, overall_plan, batch_label=batch_label
+                )
+                # Prefer the retry if it improved adherence OR at least matched
+                # it; otherwise keep the original batch.
+                if len(retry_report.themes_referenced) >= len(
+                    report.themes_referenced
+                ):
+                    batch_plan = retry_plan
+                    report = retry_report
+                    result = retry
+
+            adherence_reports.append(report)
+
+            if batches_dir is not None:
+                try:
+                    batches_dir.joinpath(
+                        f"batch_{batch_num:03d}.md"
+                    ).write_text(result.content, encoding="utf-8")
+                except OSError as exc:
+                    logger.warning(
+                        "Could not write batch audit file: %s", exc
+                    )
 
             for change in batch_plan.changes:
                 combined_plan.add_change(
@@ -313,9 +400,26 @@ class Agent:
                 )
 
             logger.info(
-                "Batch %s complete: %d change(s)",
+                "Batch %s complete: %d change(s), %d/%d plan theme(s) referenced",
                 batch_label,
                 batch_plan.files_changed,
+                len(report.themes_referenced),
+                len(overall_plan.themes),
+            )
+
+        # Append a short adherence footer to the combined plan summary.
+        if overall_plan.themes:
+            total_themes = len(overall_plan.themes)
+            applied = {
+                name
+                for report in adherence_reports
+                for name in report.themes_referenced
+            }
+            combined_plan.summary = (
+                f"{combined_plan.summary}\n\n"
+                f"### Plan adherence\n\n"
+                f"{len(applied)}/{total_themes} plan themes applied across "
+                f"{len(adherence_reports)} batch(es)."
             )
 
         logger.info(

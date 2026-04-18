@@ -5,6 +5,13 @@ that assembles the system prompt, injects retrieved documentation context,
 and formats the user's request with the relevant code.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pyagent.plan_model import CodebasePlan
+
 SYSTEM_BASE = """\
 You are PyAgent, an expert Python code reviewer, refactoring advisor, and \
 code explainer.  You are opinionated and rigorous — you hold code to the \
@@ -108,63 +115,96 @@ refactoring plan that will guide batch-by-batch refactoring of every file.
 
 ## Output Format
 
-1. **Overall Assessment** — Identify the main issues and improvement opportunities
-   you can infer from the codebase structure.  Be specific about patterns that
-   appear to repeat across multiple files.
+Your response MUST contain BOTH:
 
-2. **Refactoring Themes** — List the named patterns/transformations to apply.
-   For each theme:
-   - Name it explicitly (e.g. "Replace `Optional[X]` with `X | None`").
-   - Describe what to look for and what to change it to.
-   - List the file names most likely affected.
+(a) A human-readable markdown summary with these sections:
+  1. **Overall Assessment** — main issues and improvement opportunities you can
+     infer from the structure.  Be specific about patterns that repeat across files.
+  2. **Refactoring Themes** — named patterns/transformations to apply.  For each:
+     name it explicitly (e.g. "Replace `Optional[X]` with `X | None`"), describe
+     what to look for and what to change it to, and list file names most likely affected.
+  3. **Order of Operations** — if some changes must happen before others, note it.
+     The final operations must always include updating the project's README with
+     any relevant additions or changes.
+  4. **File-Specific Notes** — call out any files with unique concerns by name.
+  5. **Recommended Dependencies** — (optional) if a good-fit dependency is missing,
+     suggest installation via the project's package manager (uv, pip, etc.).
 
-3. **Order of Operations** — If some changes must happen before others (e.g.
-   extract a shared utility before updating all callers), note it here.
-   Note: the final operations must always be updating the project's README with
-   any relevant additions or changes to the existing information there, as well
-   as the addition of information that should generally be in README if it isn't already.
+(b) A fenced ```json block at the END of your response whose content is a single
+JSON object conforming EXACTLY to this schema (the executor parses this block;
+the markdown above is for humans):
 
-4. **File-Specific Notes** — Call out any files with unique concerns by name.
+```json
+{{
+  "assessment": "<string — the Overall Assessment text>",
+  "themes": [
+    {{
+      "name": "<short theme name>",
+      "description": "<what to change and why>",
+      "target_files": ["<relative/path.py>", "..."]
+    }}
+  ],
+  "order_of_operations": ["<step>", "..."],
+  "file_notes": [
+    {{ "path": "<relative/path.py>", "note": "<callout>" }}
+  ],
+  "recommended_dependencies": ["<pip-installable name>", "..."]
+}}
+```
 
-5. **Recommended Dependencies** — (Optional) If the user has a good use-case for any of the Python
-    dependencies in your preferred tech stack and does NOT already have them in the project dependencies:
-    - prompt them to install these dependencies by providing a copy/pastable installation
-    command using their existing package management system (e.g. uv, pip, etc.)
-    - suggest cancelling the current plan, installing these dependencies, then running
-    the plan again to integrate these new dependencies into the refactor
+Rules for the JSON block:
+- It must be valid JSON — no trailing commas, no comments.
+- Every field above must be present; use [] for empty lists.
+- `themes` must contain at least one theme if any refactoring is warranted.
+- Theme names should be short and reusable — the execution phase will look for
+  these exact names in batch summaries to verify plan adherence.
 
 Keep the plan concise but actionable.  Every point must be grounded in what
 you can see in the codebase structure — avoid generic advice.\
 """
 
 BATCH_REFACTOR_SYSTEM = """\
-        {base}
-        
-        You are performing a CODEBASE-WIDE REFACTORING as part of a coordinated
-        multi-pass operation.  You have been given a batch of files to refactor.
-        Apply the **Overall Refactoring Plan** consistently across all files in
-        this batch.
-        
-        ## Output Format
-        You MUST structure your response exactly as follows:
-        
-        1. Start with a brief SUMMARY of the changes made in this batch.
-        
-        2. For EACH file you are refactoring, output a section with this exact format:
-        
-        ### FILE: <filename>
-        **Changes:** Brief description of what changed in this file.
-        
-        <the complete refactored source code for this file>
-        
-        CRITICAL RULES:
-        The code block must contain the COMPLETE file content, not a partial diff.
-        Every file section must start with exactly ### FILE: followed by the filename.
-        The code block must be fenced with python and .
-        Do not omit unchanged parts of the file with comments like "# ... rest unchanged".
-        Do NOT refactor files that were not provided to you.
-        If a file needs no changes, omit it entirely — do not include an empty section.
-    """
+__BASE__
+
+You are performing a CODEBASE-WIDE REFACTORING as part of a coordinated
+multi-pass operation.  You have been given a batch of files to refactor.
+
+## Overall Refactoring Plan
+
+__PLAN__
+
+## How to Apply the Plan
+
+Before refactoring, read the Refactoring Themes above.  For each file in this
+batch, identify which themes apply and apply ONLY those themes.  Do not
+introduce changes outside the plan.  In your SUMMARY, name every Theme you
+applied in this batch so adherence can be verified.
+
+## Output Format
+
+You MUST structure your response exactly as follows:
+
+1. Start with a brief SUMMARY of the changes made in this batch.  The SUMMARY
+   must explicitly name each Theme from the plan that you applied.
+
+2. For EACH file you are refactoring, output a section with this exact format:
+
+### FILE: <filename>
+
+**Changes:** Brief description of what changed in this file.
+
+```python
+<the complete refactored source code for this file>
+```
+
+CRITICAL RULES:
+- The code block must contain the COMPLETE file content, not a partial diff.
+- Every file section must start with exactly `### FILE: ` followed by the filename.
+- The code block must be fenced with ```python and ```.
+- Do not omit unchanged parts of the file with comments like "# ... rest unchanged".
+- Do NOT refactor files that were not provided to you.
+- If a file needs no changes, omit its section entirely — skip empty sections.\
+"""
 
 def build_review_prompt(
     code: str,
@@ -324,7 +364,7 @@ def build_batch_refactor_prompt(
     batch_code: str,
     *,
     batch_label: str = "",
-    overall_plan: str = "",
+    overall_plan: CodebasePlan | None = None,
     context: str = "",
     user_request: str = "",
     ) -> tuple[str, str]:
@@ -334,16 +374,21 @@ def build_batch_refactor_prompt(
         batch_code: Pre-formatted string containing one or more
             ``### FILE: <name>`` sections with source code blocks.
         batch_label: Human-readable batch identifier (e.g. ``"1/3"``).
-        overall_plan: The overall refactoring strategy from the planning phase.
+        overall_plan: The structured refactoring plan from the planning phase.
         context: Retrieved documentation context from RAG.
         user_request: Specific refactoring instructions.
 
     Returns:
         A tuple of ``(system_prompt, user_message)``.
     """
-    system = BATCH_REFACTOR_SYSTEM.format(base=SYSTEM_BASE)
-    if overall_plan:
-        system += f"\n\n## Overall Refactoring Plan\n\n{overall_plan}"
+    plan_md = (
+        overall_plan.to_markdown()
+        if overall_plan is not None
+        else "_(no plan provided — refactor conservatively using playbook defaults)_"
+    )
+    system = BATCH_REFACTOR_SYSTEM.replace("__BASE__", SYSTEM_BASE).replace(
+        "__PLAN__", plan_md
+    )
     if context:
         system += f"\n\n## Reference Standards\n\n{context}"
 
