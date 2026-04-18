@@ -1,19 +1,17 @@
-# infrastructure/persistence/sqlite_collage_repository.py
-#
-# SqliteCollageRepository — Infrastructure Adapter
-#
-# Implements ICollageRepository using SQLAlchemy + SQLite.
-#
-# This class is the translator between the domain world (Collage aggregates,
-# Keyword value objects) and the relational world (CollageRow ORM records).
-# No code outside this module should know that SQLite or SQLAlchemy is in use.
-#
-# Dependency direction: this module imports from domain/ports and domain/model.
-# The domain never imports from here.
+"""
+SqliteCollageRepository — Infrastructure Adapter
+
+Implements ICollageRepository using SQLAlchemy + SQLite.
+
+This class is the translator between the domain world (Collage aggregates,
+Keyword value objects) and the relational world (CollageRow ORM records).
+No code outside this module should know that SQLite or SQLAlchemy is in use.
+
+Dependency direction: this module imports from domain/ports and domain/model.
+The domain never imports from here.
+"""
 
 from __future__ import annotations
-
-from typing import List, Optional
 
 from sqlalchemy import Engine
 
@@ -50,12 +48,12 @@ class SqliteCollageRepository(ICollageRepository):
                 row.updated_at = collage.updated_at
             session.commit()
 
-    def find_by_id(self, collage_id: str) -> Optional[Collage]:
+    def find_by_id(self, collage_id: str) -> Collage | None:
         with make_session(self._engine) as session:
             row = session.get(CollageRow, collage_id)
             return self._to_domain(row) if row else None
 
-    def find_all(self) -> List[Collage]:
+    def find_all(self) -> list[Collage]:
         with make_session(self._engine) as session:
             rows = (
                 session.query(CollageRow).order_by(CollageRow.created_at.desc()).all()
@@ -87,5 +85,5 @@ class SqliteCollageRepository(ICollageRepository):
         )
 
     @staticmethod
-    def _keywords_to_csv(keywords: List[Keyword]) -> str:
+    def _keywords_to_csv(keywords: list[Keyword]) -> str:
         return ",".join(kw.text for kw in keywords)

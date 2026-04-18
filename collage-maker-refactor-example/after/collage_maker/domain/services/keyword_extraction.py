@@ -1,26 +1,25 @@
-# domain/services/keyword_extraction.py
-#
-# KeywordExtractor — Domain Service
-#
-# Extracts and ranks the most significant keywords from a body of plain text.
-# This is a stateless service: it holds configuration, accepts text, and
-# returns a ranked list of Keyword value objects.
-#
-# Classification: Domain Service
-#   - Encapsulates domain logic (what makes a word "significant") that spans
-#     no persistent entities and requires no I/O.
-#   - Depends only on the domain model (Keyword) and the standard library /
-#     NLTK. NLTK is a pure computation library with no I/O side effects here.
-#   - Has no knowledge of Flask, databases, filesystems, or HTTP.
-#
-# Replaces: app/NLP/important_words.py  (ImportantWords)
-# Renamed because "ImportantWords" is vague. "KeywordExtractor" names the
-# intent — extracting keywords — not the data it happens to hold.
+"""
+KeywordExtractor — Domain Service
+
+Extracts and ranks the most significant keywords from a body of plain text.
+This is a stateless service: it holds configuration, accepts text, and
+returns a ranked list of Keyword value objects.
+
+Classification: Domain Service
+  - Encapsulates domain logic (what makes a word "significant") that spans
+    no persistent entities and requires no I/O.
+  - Depends only on the domain model (Keyword) and the standard library /
+    NLTK. NLTK is a pure computation library with no I/O side effects here.
+  - Has no knowledge of Flask, databases, filesystems, or HTTP.
+
+Replaces: app/NLP/important_words.py  (ImportantWords)
+Renamed because "ImportantWords" is vague. "KeywordExtractor" names the
+intent — extracting keywords — not the data it happens to hold.
+"""
 
 from __future__ import annotations
 
 from string import punctuation
-from typing import List
 
 from nltk import FreqDist
 from nltk.corpus import stopwords
@@ -42,16 +41,16 @@ class KeywordExtractor:
     def __init__(
         self,
         n_keywords: int = 25,
-        extra_stopwords: List[str] | None = None,
+        extra_stopwords: list[str] | None = None,
     ) -> None:
         self._n_keywords = n_keywords
-        self._extra_stopwords: List[str] = extra_stopwords or []
+        self._extra_stopwords: list[str] = extra_stopwords or []
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def extract(self, text: str) -> List[Keyword]:
+    def extract(self, text: str) -> list[Keyword]:
         """
         Return the top *n_keywords* Keywords ranked by frequency, most
         frequent first.
@@ -60,7 +59,7 @@ class KeywordExtractor:
         freq_dist = FreqDist(tokens)
         ranked = sorted(freq_dist.items(), key=lambda pair: pair[1], reverse=True)
 
-        keywords: List[Keyword] = []
+        keywords: list[Keyword] = []
         for word, _ in ranked:
             keywords.append(Keyword(word))
             if len(keywords) >= self._n_keywords:
@@ -72,7 +71,7 @@ class KeywordExtractor:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _clean(self, text: str) -> List[str]:
+    def _clean(self, text: str) -> list[str]:
         tokens = word_tokenize(text.lower())
         noise = (
             set(stopwords.words("english"))

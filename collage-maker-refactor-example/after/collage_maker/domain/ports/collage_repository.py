@@ -1,18 +1,17 @@
-# domain/ports/collage_repository.py
-#
-# ICollageRepository — Outbound Port
-#
-# The domain declares WHAT it needs from persistence without knowing HOW it is
-# provided. Concrete implementations live in infrastructure/persistence/ and
-# must implement every method defined here.
-#
-# Method names speak the domain language. There is no mention of SQL, sessions,
-# ORM concepts, or storage technology anywhere in this file.
+"""
+ICollageRepository — Outbound Port
+
+The domain declares WHAT it needs from persistence without knowing HOW it is
+provided. Concrete implementations live in infrastructure/persistence/ and
+must implement every method defined here.
+
+Method names speak the domain language. There is no mention of SQL, sessions,
+ORM concepts, or storage technology anywhere in this file.
+"""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 from collage_maker.domain.model.collage import Collage
 
@@ -23,11 +22,11 @@ class ICollageRepository(ABC):
         """Persist a new or updated Collage aggregate."""
 
     @abstractmethod
-    def find_by_id(self, collage_id: str) -> Optional[Collage]:
+    def find_by_id(self, collage_id: str) -> Collage | None:
         """Return the Collage with the given id, or None if not found."""
 
     @abstractmethod
-    def find_all(self) -> List[Collage]:
+    def find_all(self) -> list[Collage]:
         """Return all persisted Collages, ordered by creation date descending."""
 
     @abstractmethod
