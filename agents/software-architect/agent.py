@@ -24,9 +24,9 @@ class ArchAgent:
 
         # Load relevant documentation into index
         doc_files = [
-            "docs/architecture_influences.md",
-            "docs/architecture_patterns.md",
-            "docs/architecture_rules.md",
+            "docs/architecture/design_influences.md",
+            "docs/architecture/foundational_patterns.md",
+            "docs/architecture/general_rules.md",
         ]
         for f in doc_files:
             if not Path(f).exists():
