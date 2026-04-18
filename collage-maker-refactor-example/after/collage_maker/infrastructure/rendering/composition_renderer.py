@@ -1,5 +1,5 @@
 """
-OpenCVRenderer — Infrastructure Adapter (thin wrapper)
+CompositionRendererAdapter — Infrastructure Adapter (configuration bridge)
 
 Wires together the domain's CompositionService with a Canvas value object
 constructed from configuration values supplied at startup.
@@ -17,10 +17,10 @@ from __future__ import annotations
 from collage_maker.domain.model.canvas import Canvas
 from collage_maker.domain.services.composition import CompositionService
 
-__all__ = ["OpenCVRenderer"]
+__all__ = ["CompositionRendererAdapter"]
 
 
-class OpenCVRenderer:
+class CompositionRendererAdapter:
     """
     Infrastructure adapter that bridges configuration to domain services.
     
@@ -33,14 +33,14 @@ class OpenCVRenderer:
         max_word_font_size: Maximum font size for text rendering
         colormaps: List of colormap names for image processing
     """
-    
+
     def __init__(
         self,
         canvas_width: int,
         canvas_height: int,
         max_word_font_size: int,
         colormaps: list[str],
-    ) -> None:
+    ):
         canvas = Canvas(width=canvas_width, height=canvas_height)
         self._service = CompositionService(
             canvas=canvas,

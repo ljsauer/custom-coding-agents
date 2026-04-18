@@ -11,23 +11,21 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
 from collage_maker.domain.model.collage import Collage
 from collage_maker.domain.ports.collage_repository import ICollageRepository
 
 
 class FakeCollageRepository(ICollageRepository):
     def __init__(self) -> None:
-        self._store: Dict[str, Collage] = {}
+        self._store: dict[str, Collage] = {}
 
     def save(self, collage: Collage) -> None:
         self._store[collage.id] = collage
 
-    def find_by_id(self, collage_id: str) -> Optional[Collage]:
+    def find_by_id(self, collage_id: str) -> Collage | None:
         return self._store.get(collage_id)
 
-    def find_all(self) -> List[Collage]:
+    def find_all(self) -> list[Collage]:
         return sorted(
             self._store.values(),
             key=lambda c: c.created_at,
@@ -44,5 +42,5 @@ class FakeCollageRepository(ICollageRepository):
     def count(self) -> int:
         return len(self._store)
 
-    def all_ids(self) -> List[str]:
+    def all_ids(self) -> list[str]:
         return list(self._store.keys())
