@@ -9,7 +9,6 @@ from app.settings import Settings
 
 
 class ImportantWords:
-
     def __init__(self, text: str):
         self.text = text
 
@@ -27,11 +26,12 @@ class ImportantWords:
     def _clean_text(self) -> List[str]:
         text_lower = word_tokenize(self.text.lower())
         _stopwords = [
-            stopwords.words('english') +
-            list(punctuation) +
-            Settings.undesired_words
+            stopwords.words("english") + list(punctuation) + Settings.undesired_words
         ]
 
-        return [word.strip("-/',.1234567890~") for word in
-                text_lower if word not in _stopwords if
-                len(word) > 3]
+        return [
+            word.strip("-/',.1234567890~")
+            for word in text_lower
+            if word not in _stopwords
+            if len(word) > 3
+        ]
