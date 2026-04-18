@@ -57,7 +57,7 @@ custom-coding-agents/
 └── collage-maker-refactor-example/   # sample codebase used to exercise pyagent
 ```
 
-Each agent can also be used standalone from its own directory (`cd agents/pythonista-agent && uv run pyagent …`) — workspace membership is additive, not exclusive.
+Each agent can also be used standalone from its own directory (`cd agents/fluent-pythonista && uv run pyagent …`) — workspace membership is additive, not exclusive.
 
 ## Configuration
 
