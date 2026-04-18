@@ -120,7 +120,7 @@ def refactor(
         False,
         "--full",
         help=(
-            "Force the two-phase plan \u2192 batch execute refactor across every "
+            "Force the two-phase plan -> batch execute refactor across every "
             "source file (directory only).  Overrides the default heuristic."
         ),
     ),
@@ -378,8 +378,8 @@ def _resolve_directory_mode(
     Rules:
       - ``--partial`` and ``--full`` are mutually exclusive.
       - Either flag, when set, wins over the heuristic.
-      - Otherwise: empty/whitespace instructions → full; focused
-        instructions → partial.
+      - Otherwise: empty/whitespace instructions -> full; focused
+        instructions -> partial.
     """
     if partial and full:
         raise typer.BadParameter(
@@ -436,13 +436,13 @@ def _run_refactor(
         mode = _resolve_directory_mode(path, instructions, partial, full)
         if mode == "full":
             console.print(
-                "[dim]Directory path \u2192 full codebase refactor "
-                "(plan \u2192 batch execute).[/dim]"
+                "[dim]Directory path -> full codebase refactor "
+                "(plan -> batch execute).[/dim]"
             )
             plan = _run_codebase_refactor(agent, path, instructions=instructions)
         else:
             console.print(
-                "[dim]Directory path with focused instructions \u2192 "
+                "[dim]Directory path with focused instructions -> "
                 "partial refactor (context-packed single pass).[/dim]"
             )
             plan = _run_partial_directory_refactor(
