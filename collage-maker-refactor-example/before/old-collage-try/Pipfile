@@ -1,0 +1,23 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+opencv-contrib-python = "*"
+numpy = "*"
+nltk = "*"
+flask = "*"
+imutils = "*"
+shapely = "*"
+pony = "*"
+wordcloud = "*"
+factory-boy = "*"
+beautifulsoup4 = "*"
+google-images-download = "*"
+# google-images-search = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.9"
