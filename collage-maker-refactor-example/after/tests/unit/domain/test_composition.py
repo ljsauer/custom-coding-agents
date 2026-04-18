@@ -5,11 +5,9 @@
 
 import numpy as np
 import pytest
-
 from collage_maker.domain.model.canvas import Canvas, Rectangle
 from collage_maker.domain.model.keyword import Keyword
 from collage_maker.domain.services.composition import CompositionService
-
 
 # ---------------------------------------------------------------------------
 # Rectangle

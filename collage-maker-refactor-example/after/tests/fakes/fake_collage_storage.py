@@ -8,14 +8,12 @@
 
 from __future__ import annotations
 
-from typing import Dict
-
 from collage_maker.domain.ports.collage_storage import ICollageStorage
 
 
 class FakeCollageStorage(ICollageStorage):
     def __init__(self) -> None:
-        self._store: Dict[str, bytes] = {}
+        self._store: dict[str, bytes] = {}
 
     def save(self, collage_id: str, image_bytes: bytes) -> str:
         self._store[collage_id] = image_bytes
