@@ -9,15 +9,13 @@
 # Scope: infrastructure adapter only. No Flask, no use cases, no image I/O.
 
 import pytest
-
-from sqlalchemy import create_engine
-
 from collage_maker.domain.model.collage import Collage
 from collage_maker.domain.model.keyword import Keyword
 from collage_maker.infrastructure.persistence.database import Base
 from collage_maker.infrastructure.persistence.sqlite_collage_repository import (
     SqliteCollageRepository,
 )
+from sqlalchemy import create_engine
 
 
 @pytest.fixture()

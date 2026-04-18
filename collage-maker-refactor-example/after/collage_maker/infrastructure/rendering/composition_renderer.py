@@ -23,10 +23,10 @@ __all__ = ["CompositionRendererAdapter"]
 class CompositionRendererAdapter:
     """
     Infrastructure adapter that bridges configuration to domain services.
-    
+
     Converts flat configuration values into domain objects required by
     the CompositionService, acting as the configuration-to-domain bridge.
-    
+
     Args:
         canvas_width: Width of the canvas in pixels
         canvas_height: Height of the canvas in pixels
@@ -52,7 +52,7 @@ class CompositionRendererAdapter:
     def composition_service(self) -> CompositionService:
         """
         Expose the domain service so the use case can receive it directly.
-        
+
         Returns:
             The configured composition service instance
         """

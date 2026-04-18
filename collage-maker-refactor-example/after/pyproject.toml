@@ -36,3 +36,6 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.15.10",
 ]
+
+[tool.ruff]
+ignore = ["S101"]

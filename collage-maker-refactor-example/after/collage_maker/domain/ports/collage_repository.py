@@ -9,8 +9,10 @@ functionality while maintaining clean architecture principles.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-from collage_maker.domain.model.collage import Collage
+if TYPE_CHECKING:
+    from collage_maker.domain.model.collage import Collage
 
 
 class ICollageRepository(ABC):

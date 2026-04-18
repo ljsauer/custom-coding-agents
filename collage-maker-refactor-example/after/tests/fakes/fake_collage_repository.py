@@ -11,8 +11,12 @@
 
 from __future__ import annotations
 
-from collage_maker.domain.model.collage import Collage
+from typing import TYPE_CHECKING
+
 from collage_maker.domain.ports.collage_repository import ICollageRepository
+
+if TYPE_CHECKING:
+    from collage_maker.domain.model.collage import Collage
 
 
 class FakeCollageRepository(ICollageRepository):
