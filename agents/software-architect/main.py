@@ -37,7 +37,7 @@ def main():
     while True:
         try:
             user_input = input("You: ").strip()
-        except (KeyboardInterrupt, EOFError):
+        except KeyboardInterrupt, EOFError:
             print("\nSession saved.")
             break
 
@@ -49,7 +49,7 @@ def main():
             break
 
         if user_input.startswith(":decide "):
-            decision = user_input[len(":decide "):].strip()
+            decision = user_input[len(":decide ") :].strip()
             agent.log_decision(decision)
             continue
 
