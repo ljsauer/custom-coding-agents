@@ -12,7 +12,7 @@ exceptions that are caught and converted into proper HTTP error responses.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse
 
 from collage_maker.application.use_cases.create_collage import CreateCollageUseCase
@@ -38,7 +38,6 @@ from collage_maker.presentation.models.responses import (
     CollageListResponse,
     CollageResponse,
     MessageResponse,
-    ErrorResponse,
 )
 
 router = APIRouter()
@@ -65,14 +64,16 @@ async def index(
         image_path = storage.public_path(collage.id)
         html_items.append(
             f'<div class="collage-item">'
-            f'<img src="/static/{image_path}" width="{img_size}" height="{img_size * 3//4}">'
+            f'<img src="/static/{image_path}" width="{img_size}" height="{img_size * 3//4}" '
+            f'alt="Collage: {collage.name}" loading="lazy">'
             f'<h3>{collage.name}</h3>'
             f'<p>Keywords: {", ".join(collage.keyword_texts())}</p>'
             f'<form method="post" action="/api/collage/{collage.id}/rename">'
-            f'<input type="text" name="name" value="{collage.name}">'
+            f'<input type="text" name="name" value="{collage.name}" required>'
             f'<button type="submit">Rename</button>'
             f'</form>'
-            f'<form method="post" action="/api/collage/{collage.id}/delete">'
+            f'<form method="post" action="/api/collage/{collage.id}/delete" '
+            f'onsubmit="return confirm(\'Delete this collage?\')">'
             f'<button type="submit">Delete</button>'
             f'</form>'
             f'</div>'
@@ -80,12 +81,23 @@ async def index(
     
     return f"""
     <!DOCTYPE html>
-    <html>
-    <head><title>Collage Gallery</title></head>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Collage Gallery</title>
+        <style>
+            .gallery {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }}
+            .collage-item {{ border: 1px solid #ddd; padding: 15px; border-radius: 8px; }}
+            .collage-item img {{ width: 100%; height: auto; }}
+            form {{ margin-top: 10px; }}
+            input, button {{ margin: 5px; padding: 8px; }}
+        </style>
+    </head>
     <body>
         <h1>Collage Gallery</h1>
         <form method="post" action="/api/collage" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".txt">
+            <input type="file" name="file" accept=".txt,.md,.rtf" required>
             <button type="submit">Create Collage</button>
         </form>
         <div class="gallery">
@@ -124,12 +136,22 @@ async def list_collages(
 
 @router.post("/api/collage", response_model=MessageResponse)
 async def create_collage(
+    background_tasks: BackgroundTasks,
     file: UploadFile,
     create_uc: CreateCollageUseCase = Depends(get_create_use_case),
 ) -> MessageResponse:
-    """Create a new collage from uploaded text file."""
+    """Create a new collage from uploaded text file (async background processing)."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="Please upload a text file.")
+    
+    # Validate file type
+    allowed_extensions = {'.txt', '.md', '.rtf'}
+    file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
+    if f'.{file_ext}' not in allowed_extensions:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"File type not supported. Please use: {', '.join(allowed_extensions)}"
+        )
     
     try:
         content = await file.read()
@@ -138,23 +160,35 @@ async def create_collage(
         if not text.strip():
             raise HTTPException(status_code=400, detail="The uploaded file appears to be empty.")
         
-        create_uc.execute(text)
+        if len(text) < 100:
+            raise HTTPException(
+                status_code=400, 
+                detail="Text is too short. Please provide at least 100 characters for meaningful keyword extraction."
+            )
+        
+        # Process collage creation in background for better UX
+        background_tasks.add_task(create_uc.execute, text)
+        
         return MessageResponse(
-            message="Your collage is being created — check back shortly."
+            message="Your collage is being created in the background. Please refresh the page in a few moments to see the result."
         )
         
     except CollageCreationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Could not decode file as text.")
+        raise HTTPException(
+            status_code=400, 
+            detail="Could not decode file as text. Please ensure the file is in UTF-8 encoding."
+        )
     except Exception as exc:
+        # Log the full exception in production
         raise HTTPException(status_code=500, detail=f"Could not create collage: {exc}")
 
 
 @router.post("/api/collage/{collage_id}/rename", response_model=MessageResponse)
 async def rename_collage_form(
     collage_id: str,
-    name: str = Form(...),
+    name: str = Form(..., min_length=1, max_length=100),
     rename_uc: RenameCollageUseCase = Depends(get_rename_use_case),
 ) -> MessageResponse:
     """Rename a collage (form submission)."""
@@ -195,6 +229,6 @@ async def delete_collage(
     """Delete a collage and its image."""
     try:
         delete_uc.execute(collage_id)
-        return MessageResponse(message="Collage deleted.")
+        return MessageResponse(message="Collage deleted successfully.")
     except CollageNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

@@ -1,12 +1,9 @@
 """
-ICollageRepository — Outbound Port
+ICollageRepository — Enhanced Outbound Port
 
 The domain declares WHAT it needs from persistence without knowing HOW it is
-provided. Concrete implementations live in infrastructure/persistence/ and
-must implement every method defined here.
-
-Method names speak the domain language. There is no mention of SQL, sessions,
-ORM concepts, or storage technology anywhere in this file.
+provided. This enhanced version includes additional query methods for better
+functionality while maintaining clean architecture principles.
 """
 
 from __future__ import annotations
@@ -17,6 +14,8 @@ from collage_maker.domain.model.collage import Collage
 
 
 class ICollageRepository(ABC):
+    """Enhanced repository interface with modern query capabilities."""
+
     @abstractmethod
     def save(self, collage: Collage) -> None:
         """Persist a new or updated Collage aggregate."""
@@ -30,5 +29,28 @@ class ICollageRepository(ABC):
         """Return all persisted Collages, ordered by creation date descending."""
 
     @abstractmethod
-    def delete(self, collage_id: str) -> None:
-        """Remove the Collage with the given id from the store."""
+    def find_by_name_pattern(self, pattern: str) -> list[Collage]:
+        """Find collages whose names match the given pattern (case-insensitive)."""
+
+    @abstractmethod
+    def find_recent(self, hours: int = 24) -> list[Collage]:
+        """Find collages created within the specified number of hours."""
+
+    @abstractmethod
+    def find_by_keyword(self, keyword_text: str) -> list[Collage]:
+        """Find collages that contain the specified keyword."""
+
+    @abstractmethod
+    def count_all(self) -> int:
+        """Return the total number of stored collages."""
+
+    @abstractmethod
+    def delete(self, collage_id: str) -> bool:
+        """
+        Remove the Collage with the given id from the store.
+        Returns True if a collage was deleted, False if none existed.
+        """
+
+    @abstractmethod
+    def exists(self, collage_id: str) -> bool:
+        """Check if a collage with the given ID exists."""
