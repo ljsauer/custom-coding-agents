@@ -29,7 +29,10 @@ from pyagent.rag import load_knowledge_base
 from pyagent.tools.refactor import check_batch_adherence
 from pyagent.writer import FileChange, RefactorPlan
 
-DOCS_PATH = Path(__file__).resolve().parent.parent / "docs"
+# pyagent's docs live under <repo>/docs/python/.  This path is
+# test_core.py → agents/fluent-pythonista → agents → <repo>, then the
+# python/ subdir.
+DOCS_PATH = Path(__file__).resolve().parent.parent.parent / "docs" / "python"
 
 
 class TestKnowledgeBase:
@@ -60,19 +63,47 @@ class TestKnowledgeBase:
         assert isinstance(text, str)
         assert len(text) > 0
 
+    def test_default_docs_path_finds_chunks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: ``Settings().docs_path`` must resolve to a real
+        directory of pyagent's markdown corpus, and ``load_knowledge_base``
+        must find chunks there.
+
+        Previously the default pointed at ``<repo>/docs`` (parent of the
+        per-agent subdirs), and ``load_knowledge_base`` does a
+        non-recursive ``glob("*.md")``, so the KB silently loaded zero
+        chunks on defaults.  If anyone reintroduces that mistake — either
+        by broadening the default back to ``<repo>/docs`` or by moving
+        the corpus — this test catches it immediately.
+        """
+        from pyagent.config import Settings
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-regression")
+        settings = Settings()
+
+        assert settings.docs_path.is_dir(), (
+            f"Default docs_path does not exist: {settings.docs_path}"
+        )
+        kb = load_knowledge_base(settings.docs_path)
+        assert kb.total_chunks > 0, (
+            f"Default docs_path={settings.docs_path} yielded 0 chunks — "
+            "either the path is wrong or the glob isn't finding the markdown files."
+        )
+
 
 class TestContext:
     """Tests for codebase ingestion and context assembly."""
 
     def test_discover_python_files(self) -> None:
-        src_dir = Path(__file__).resolve().parent.parent / "src" / "pyagent"
+        src_dir = Path(__file__).resolve().parent / "src" / "pyagent"
         files = discover_python_files(src_dir)
         assert len(files) > 0
         assert all(f.suffix == ".py" for f in files)
 
     def test_parse_module_extracts_structure(self) -> None:
         module_path = (
-            Path(__file__).resolve().parent.parent / "src" / "pyagent" / "config.py"
+            Path(__file__).resolve().parent / "src" / "pyagent" / "config.py"
         )
         info = parse_module(module_path)
         assert info.path == module_path
@@ -101,7 +132,7 @@ class TestContext:
 
     def test_module_info_token_estimate(self) -> None:
         module_path = (
-            Path(__file__).resolve().parent.parent / "src" / "pyagent" / "config.py"
+            Path(__file__).resolve().parent / "src" / "pyagent" / "config.py"
         )
         info = parse_module(module_path)
         assert info.token_estimate > 0
