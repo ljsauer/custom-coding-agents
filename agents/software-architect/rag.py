@@ -1,6 +1,6 @@
 # rag.py
 import re
-import logging
+from pyagent import logging
 import numpy as np
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
