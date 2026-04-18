@@ -47,9 +47,7 @@ class CollageRow(Base):
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     keywords_csv: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        nullable=False,
-        default=utc_now
+        DateTime(timezone=True), nullable=False, default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

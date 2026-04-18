@@ -227,7 +227,7 @@ async def create_collage(
 
         return MessageResponse(
             message="Your collage is being created in the background. Please refresh the page in a few moments to see the result. "
-                    "Note: If image fetching fails, the process may take longer or fail silently."
+            "Note: If image fetching fails, the process may take longer or fail silently."
         )
 
     except CollageCreationError as exc:
@@ -347,7 +347,7 @@ async def _safe_process_collage_creation(
 ) -> None:
     """
     Safe wrapper that prevents exceptions in background task from bubbling up to FastAPI.
-    
+
     Enhanced with specific error handling for image source failures.
     """
     try:
@@ -368,4 +368,6 @@ async def _safe_process_collage_creation(
     except DomainError as e:
         logger.error(f"Domain error during background processing: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error during background processing: {e}", exc_info=True)
+        logger.error(
+            f"Unexpected error during background processing: {e}", exc_info=True
+        )
