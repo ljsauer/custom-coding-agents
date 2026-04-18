@@ -1,23 +1,25 @@
-# main.py — Composition Root
-#
-# This is the ONLY file in the codebase that:
-#   - Names concrete infrastructure adapter classes
-#   - Constructs those adapters
-#   - Injects them into use cases through domain port interfaces
-#   - Hands the wired use cases to the Flask presentation layer
-#
-# Nothing else in the codebase imports GoogleImageFetcher, SqliteCollageRepository,
-# or LocalDiskStorage by name. That isolation is what makes every other module
-# independently testable.
-#
-# Startup sequence:
-#   1. Ensure required filesystem directories exist (side effects belong here).
-#   2. Initialise the database engine.
-#   3. Construct infrastructure adapters.
-#   4. Construct domain services (configuration-driven).
-#   5. Construct application use cases, injecting adapters through ports.
-#   6. Build the Flask app, injecting use cases.
-#   7. Run.
+"""
+main.py — Composition Root
+
+This is the ONLY file in the codebase that:
+  - Names concrete infrastructure adapter classes
+  - Constructs those adapters
+  - Injects them into use cases through domain port interfaces
+  - Hands the wired use cases to the Flask presentation layer
+
+Nothing else in the codebase imports GoogleImageFetcher, SqliteCollageRepository,
+or LocalDiskStorage by name. That isolation is what makes every other module
+independently testable.
+
+Startup sequence:
+  1. Ensure required filesystem directories exist (side effects belong here).
+  2. Initialise the database engine.
+  3. Construct infrastructure adapters.
+  4. Construct domain services (configuration-driven).
+  5. Construct application use cases, injecting adapters through ports.
+  6. Build the Flask app, injecting use cases.
+  7. Run.
+"""
 
 import os
 
@@ -47,7 +49,7 @@ from collage_maker.application.use_cases.list_collages import ListCollagesUseCas
 from collage_maker.presentation.app import create_app
 
 
-def bootstrap():
+def bootstrap() -> None:
     # 1. Filesystem bootstrap (the only os.makedirs call in the project)
     for directory in (cfg.collage_dir, cfg.download_dir):
         os.makedirs(directory, exist_ok=True)

@@ -1,21 +1,20 @@
-# config.py
-#
-# Pure configuration values. No side effects. No os.mkdir. No I/O of any kind.
-#
-# This is a frozen dataclass — import it anywhere that needs configuration
-# without fear of triggering filesystem operations or database connections.
-#
-# Directory bootstrapping is the responsibility of main.py (the composition
-# root), executed once at startup, not at import time.
+"""
+Pure configuration values. No side effects. No os.mkdir. No I/O of any kind.
+
+This is a frozen dataclass — import it anywhere that needs configuration
+without fear of triggering filesystem operations or database connections.
+
+Directory bootstrapping is the responsibility of main.py (the composition
+root), executed once at startup, not at import time.
+"""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import List
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Config:
     # -----------------------------------------------------------------------
     # Filesystem paths
@@ -42,7 +41,7 @@ class Config:
     # -----------------------------------------------------------------------
     # NLP — domain-specific noise words added on top of NLTK's English list
     # -----------------------------------------------------------------------
-    extra_stopwords: List[str] = field(
+    extra_stopwords: list[str] = field(
         default_factory=lambda: [
             "said",
             "might",
@@ -73,7 +72,7 @@ class Config:
     # -----------------------------------------------------------------------
     # Wordcloud colour maps
     # -----------------------------------------------------------------------
-    colormaps: List[str] = field(
+    colormaps: list[str] = field(
         default_factory=lambda: [
             "Accent",
             "Blues",

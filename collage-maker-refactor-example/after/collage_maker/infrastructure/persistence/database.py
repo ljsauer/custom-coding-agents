@@ -1,17 +1,17 @@
-# infrastructure/persistence/database.py
-#
-# SQLAlchemy engine and session factory.
-#
-# This module is the only place in the entire codebase where SQLAlchemy is
-# configured. It is called once from main.py (the composition root) and the
-# resulting engine is injected into SqliteCollageRepository.
-#
-# Nothing in the domain or application layers imports from this module.
+"""
+SQLAlchemy engine and session factory.
+
+This module is the only place in the entire codebase where SQLAlchemy is
+configured. It is called once from main.py (the composition root) and the
+resulting engine is injected into SqliteCollageRepository.
+
+Nothing in the domain or application layers imports from this module.
+"""
 
 from __future__ import annotations
 
-from sqlalchemy import create_engine, Engine
-from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 
 class Base(DeclarativeBase):
