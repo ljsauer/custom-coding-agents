@@ -47,7 +47,9 @@ def build_index(filepaths: list[str]) -> tuple[list[dict], np.ndarray]:
         all_chunks.extend(chunks)
 
     if not all_chunks:
-        raise ValueError(f"No chunks produced from {filepaths}. Check file paths and content.")
+        raise ValueError(
+            f"No chunks produced from {filepaths}. Check file paths and content."
+        )
 
     texts = [c["text"] for c in all_chunks]
     embeddings = model.encode(texts, convert_to_numpy=True)
@@ -57,10 +59,7 @@ def build_index(filepaths: list[str]) -> tuple[list[dict], np.ndarray]:
 
 
 def retrieve(
-    query: str,
-    chunks: list[dict],
-    embeddings: np.ndarray,
-    top_k: int = 3
+    query: str, chunks: list[dict], embeddings: np.ndarray, top_k: int = 3
 ) -> list[dict]:
     if not query.strip():
         raise ValueError("Query is empty.")
@@ -85,7 +84,6 @@ def retrieve(
 
 def build_context_block(retrieved_chunks: list[dict]) -> str:
     sections = "\n\n---\n".join(
-        f"[{c['source']} → {c['heading']}]\n{c['text']}"
-        for c in retrieved_chunks
+        f"[{c['source']} → {c['heading']}]\n{c['text']}" for c in retrieved_chunks
     )
     return f"\n\n## Reference Material\n{sections}"
