@@ -25,7 +25,7 @@ package = false
 
 [tool.uv.workspace]
 members = [
-    "agents/pythonista-agent",
+    "agents/fluent-pythonista",
     "agents/software-architect",
 ]
 
